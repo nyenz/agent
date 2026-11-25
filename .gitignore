@@ -1,0 +1,19 @@
+# Private data - never commit
+sessions/
+browser_profile/
+config.json
+results/
+logs/
+install_state.json
+.backup/
+
+# Environments and build output
+.venv/
+dist/
+build/
+
+# Python noise
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/

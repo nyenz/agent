@@ -1,0 +1,40 @@
+{
+  "schema": 2,
+  "updated_utc": "2026-11-25T00:10:50Z",
+  "session_summary": "Stage 0 done (fresh start). Stage 1 built at user's request in the same session: .gitignore, app.py (--list-profiles, --smoke-test), fanout/{__init__,config,logging_setup,errors,brave,ui}.py, tests (30). Proven in sandbox with a FAKE Brave profile tree: pytest 30 passed under Xvfb, ruff clean, headless smoke launch reaches Scan screen and Brave-missing screen. NOT proven: real Brave profile list on user's machine. Design notes: scan runs on a short-lived helper thread feeding a queue drained by root.after(80); Stage 2's single asyncio worker thread should take over background work. Local State profile.last_used names a folder, not a time, so per-profile last-used uses info_cache active_time then dir mtime; profile.last_used feeds the running guess.",
+  "stages": {
+    "0": "verified_done",
+    "1": "in_progress",
+    "2": "not_started",
+    "3": "not_started",
+    "4": "not_started",
+    "5": "not_started",
+    "6": "not_started",
+    "7": "not_started"
+  },
+  "current_stage": 1,
+  "last_verified_step": "xvfb-run python -m pytest -q -> 30 passed; ruff check . -> clean; xvfb-run python app.py --smoke-test -> 'first screen = scan (3 profiles)' (fake Brave tree)",
+  "next_action": "Finish Stage 1 exit proof on the user's real machine: run `python app.py --list-profiles`, paste output, compare with Local State (profile.info_cache); then run `python app.py` and confirm the Scan screen. Then mark Stage 1 verified_done; Stage 2 is next.",
+  "files_touched": [
+    ".gitignore", "app.py", "conftest.py", "FANOUT_STATE.json",
+    "fanout/__init__.py", "fanout/config.py", "fanout/logging_setup.py", "fanout/errors.py",
+    "fanout/brave.py", "fanout/ui.py",
+    "tests/test_brave.py", "tests/test_config.py", "tests/test_ui.py"
+  ],
+  "checklist": {
+    "1": "UNTESTED", "2": "UNTESTED", "3": "PASS", "4": "UNTESTED",
+    "5": "UNTESTED", "6": "UNTESTED", "7": "UNTESTED", "8": "UNTESTED",
+    "9": "UNTESTED", "10": "UNTESTED", "11": "UNTESTED", "12": "UNTESTED",
+    "13": "UNTESTED", "14": "UNTESTED", "15": "PASS", "16": "UNTESTED",
+    "17": "UNTESTED", "18": "UNTESTED", "19": "PASS", "20": "UNTESTED",
+    "21": "UNTESTED"
+  },
+  "deviations_kept": [],
+  "blockers": [
+    "GitHub not linked to the Claude account: repo is read-only here, cannot push (needed for Stage 7); commits exist only in this sandbox until pushed",
+    "No real Brave in the sandbox: Stage 1 exit proof (real profile list) must be run on the user's machine",
+    "Windows 11 and macOS runs are UNTESTED (sandbox is Linux)"
+  ],
+  "last_commit": "e097dfb",
+  "safety_baseline": "Tracked files are code, tests, .gitignore and FANOUT_STATE.json only. .gitignore excludes sessions/ browser_profile/ config.json results/ logs/ .venv/ install_state.json .backup/ dist/ build/. App data (config, logs) lives in the per-user app data folder, outside the repo."
+}
