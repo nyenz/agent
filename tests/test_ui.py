@@ -5,12 +5,15 @@ from __future__ import annotations
 import time
 import tkinter as tk
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from fanout.brave import BraveProfile, ScanResult
 from fanout.config import MAX_ACCOUNTS, Config, load_config, save_config
 from fanout.ui import FanOutApp, profile_key
+
+pytestmark = pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")  # Tk variables freed after the window
 
 
 def fake_scan(count: int, exe: bool = True) -> ScanResult:
@@ -103,3 +106,153 @@ def test_notice_dismiss_is_remembered(root: tk.Tk) -> None:
     assert len(buttons) == 1
     buttons[0].invoke()
     assert cfg.first_run_notice_dismissed is True and saved
+
+
+class FakeWorker:
+    """Records commands instead of opening browsers."""
+
+    def __init__(self, events: Any) -> None:
+        self.events, self.commands, self.final_snapshot = events, [], {}
+
+    def start(self) -> None:
+        return None
+
+    def submit(self, command: str, **payload: Any) -> None:
+        self.commands.append((command, payload))
+
+    def shutdown(self, timeout: float = 20.0) -> bool:
+        self.commands.append(("shutdown", {}))
+        return True
+
+
+def open_with_worker(root: tk.Tk, cfg: Config, result: ScanResult) -> FanOutApp:
+    screens: list[str] = []
+    app = FanOutApp(
+        root, cfg, save=lambda c: None, scan_fn=lambda: result,
+        on_screen=lambda n, d: screens.append(n), worker_factory=FakeWorker,
+    )
+    deadline = time.time() + 5
+    while not screens and time.time() < deadline:
+        root.update()
+        time.sleep(0.02)
+    app.screens = screens  # type: ignore[attr-defined]
+    return app
+
+
+def test_continue_opens_one_window_per_picked_profile(root: tk.Tk) -> None:
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True), fake_scan(5))
+    app.continue_clicked()
+    command, payload = app.worker.commands[-1]  # type: ignore[union-attr]
+    assert command == "open_windows"
+    assert [s.number for s in payload["specs"]] == [1, 2, 3]
+    assert payload["exe"] == Path("/usr/bin/brave")
+    assert payload["screen"][0] > 0
+    assert list(app.slot_vars) == [1, 2, 3]
+
+
+def test_bundled_chromium_means_no_executable(root: tk.Tk) -> None:
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True, use_bundled_chromium=True), fake_scan(2))
+    app.continue_clicked()
+    assert app.worker.commands[-1][1]["exe"] is None  # type: ignore[union-attr]
+
+
+def test_import_logins_choice_is_passed_to_specs(root: tk.Tk) -> None:
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True, import_logins=True), fake_scan(2))
+    app.continue_clicked()
+    specs = app.worker.commands[-1][1]["specs"]  # type: ignore[union-attr]
+    assert all(s.import_from is not None for s in specs)
+
+
+def test_all_ready_enables_at_any_ready_count(root: tk.Tk) -> None:
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True), fake_scan(3))
+    app.continue_clicked()
+    assert str(app.continue_button["state"]) == "disabled"  # type: ignore[index]
+    app.on_worker_event("slot_open", {"slot": 1})
+    app.on_worker_event("slot_state", {"slot": 2, "ready": True, "host": "chat.example.com"})
+    assert str(app.continue_button["state"]) == "normal"  # type: ignore[index]
+    assert app.slot_vars[2].get() == "READY - chat.example.com"
+    app.on_worker_event("slot_state", {"slot": 2, "ready": False, "host": "chat.example.com"})
+    assert str(app.continue_button["state"]) == "disabled"  # type: ignore[index]
+
+
+def test_slot_error_shows_message_and_fix_without_traceback(root: tk.Tk) -> None:
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True), fake_scan(2))
+    app.continue_clicked()
+    app.on_worker_event("slot_error", {"slot": 1, "message": "FanOut couldn't start the browser.", "fix": "Try again."})
+    text = app.slot_vars[1].get()
+    assert "couldn't start the browser" in text and "What to try: Try again." in text and "Traceback" not in text
+
+
+def test_note_is_shown_under_the_status(root: tk.Tk) -> None:
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True), fake_scan(1))
+    app.continue_clicked()
+    app.on_worker_event("slot_note", {"slot": 1, "message": "just log in once, it'll be remembered"})
+    app.on_worker_event("slot_state", {"slot": 1, "ready": False, "host": ""})
+    assert "just log in once" in app.slot_vars[1].get()
+
+
+def test_back_closes_windows_then_returns_to_scan(root: tk.Tk) -> None:
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True), fake_scan(2))
+    app.continue_clicked()
+    app.back_to_scan()
+    assert app.worker.commands[-1][0] == "close_windows"  # type: ignore[union-attr]
+    app.on_worker_event("windows_closed", {})
+    assert app.tree is not None  # Scan screen is back
+
+
+def test_snapshot_event_is_saved_to_config(root: tk.Tk) -> None:
+    cfg = Config(first_run_notice_dismissed=True)
+    app = open_with_worker(root, cfg, fake_scan(1))
+    app.on_worker_event("snapshot", {"window_geometry": {"1": [1, 2, 3, 4]}, "last_urls": {"1": "https://a.example"}})
+    assert cfg.window_geometry == {"1": [1, 2, 3, 4]} and cfg.last_urls == {"1": "https://a.example"}
+
+
+def test_closing_the_app_shuts_the_worker_down_first(root: tk.Tk) -> None:
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True), fake_scan(1))
+    app.continue_clicked()
+    worker = app.worker
+    app.worker.final_snapshot = {"window_geometry": {"1": [9, 9, 9, 9]}}  # type: ignore[union-attr]
+    app.close()
+    assert worker.commands[-1] == ("shutdown", {})  # type: ignore[union-attr]
+    assert app.cfg.window_geometry == {"1": [9, 9, 9, 9]}
+    root.destroy = lambda: None  # type: ignore[method-assign]  # fixture destroys the already-closed window
+
+
+def test_reuse_mode_with_brave_running_offers_the_three_choices(root: tk.Tk, monkeypatch: pytest.MonkeyPatch) -> None:
+    import fanout.ui as ui_module
+
+    monkeypatch.setattr(ui_module, "running_brave_cmdlines", lambda: [["brave"]])
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True, mode="reuse_profiles"), fake_scan(2))
+    asked: list[int] = []
+
+    def fake_ask() -> str:
+        asked.append(1)
+        return "close"
+
+    app._ask_brave_open = fake_ask  # type: ignore[method-assign]
+    app.continue_clicked()
+    assert asked == [1]
+    assert app.worker.commands[-1][0] == "close_brave"  # type: ignore[union-attr]
+    # Cancel does nothing at all
+    app._ask_brave_open = lambda: "cancel"  # type: ignore[method-assign]
+    before = len(app.worker.commands)  # type: ignore[union-attr]
+    app.show_scan()
+    app.continue_clicked()
+    assert len(app.worker.commands) == before  # type: ignore[union-attr]
+    # Managed windows instead
+    app._ask_brave_open = lambda: "managed"  # type: ignore[method-assign]
+    app.continue_clicked()
+    assert app.worker.commands[-1][0] == "open_windows" and app.cfg.mode == "app_managed"  # type: ignore[union-attr]
+
+
+def test_reuse_mode_confirms_then_plans_in_place_profiles(root: tk.Tk, monkeypatch: pytest.MonkeyPatch) -> None:
+    import fanout.ui as ui_module
+
+    monkeypatch.setattr(ui_module, "running_brave_cmdlines", list)
+    monkeypatch.setattr(ui_module.messagebox, "askokcancel", lambda *a, **k: True)
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True, mode="reuse_profiles"), fake_scan(2))
+    app.continue_clicked()
+    command, payload = app.worker.commands[-1]  # type: ignore[union-attr]
+    assert command == "open_windows"
+    assert payload["specs"][0].profile_directory == "Default" and payload["specs"][1].temporary
+    app._remove_temp_dir()

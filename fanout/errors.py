@@ -23,6 +23,23 @@ class FriendlyError:
 def describe(exc: BaseException) -> FriendlyError:
     """Log the full traceback to fanout.log and return a friendly explanation."""
     log.error("Unhandled error", exc_info=(type(exc), exc, exc.__traceback__))
+    text = str(exc).lower()
+    if "executable doesn't exist" in text or "failed to launch" in text or "enoent" in text:
+        return FriendlyError(
+            "FanOut couldn't start the browser.",
+            "If you chose the built-in Chromium, use Settings > Repair installation. "
+            "If you use Brave, check that it is installed, then try again.",
+        )
+    if "singleton" in text or "already in use" in text or "profile appears to be in use" in text:
+        return FriendlyError(
+            "That browser profile is already open somewhere else.",
+            "Close Brave completely, or choose 'App-managed windows' instead.",
+        )
+    if "timeout" in text or isinstance(exc, TimeoutError):
+        return FriendlyError(
+            "The browser took too long to respond.",
+            "Close any stuck browser windows and try again.",
+        )
     if isinstance(exc, PermissionError):
         return FriendlyError(
             "FanOut isn't allowed to read or write a file it needs.",

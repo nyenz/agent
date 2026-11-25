@@ -20,7 +20,7 @@ MAX_ACCOUNTS = 6
 
 @dataclass
 class Config:
-    """User settings. Never holds passwords, cookies, prompts or answers."""
+    """User settings. Never holds login details, cookies, prompts or answers."""
 
     version: int = CONFIG_VERSION
     num_accounts: int = 3
@@ -32,6 +32,9 @@ class Config:
     stable_seconds: float = 3.0
     timeout_seconds: int = 180
     first_run_notice_dismissed: bool = False
+    import_logins: bool = False
+    window_geometry: dict[str, list[int]] = field(default_factory=dict)  # "1" -> [x, y, w, h]
+    last_urls: dict[str, str] = field(default_factory=dict)  # "1" -> "https://site.example" (origin only)
 
 
 def app_data_dir() -> Path:
@@ -91,6 +94,12 @@ def _clean(raw: dict[str, Any]) -> Config:
     cfg = Config(**values)
     cfg.num_accounts = max(1, min(MAX_ACCOUNTS, cfg.num_accounts))
     cfg.selected_profiles = [str(p) for p in cfg.selected_profiles][:MAX_ACCOUNTS]
+    cfg.window_geometry = {
+        str(k): [int(n) for n in v]
+        for k, v in cfg.window_geometry.items()
+        if isinstance(v, list) and len(v) == 4 and all(isinstance(n, int) and not isinstance(n, bool) for n in v)
+    }
+    cfg.last_urls = {str(k): v for k, v in cfg.last_urls.items() if isinstance(v, str) and v.startswith("http")}
     cfg.min_delay_seconds = max(0.0, cfg.min_delay_seconds)
     cfg.stable_seconds = max(1.0, min(30.0, cfg.stable_seconds))
     cfg.timeout_seconds = max(10, min(1800, cfg.timeout_seconds))

@@ -173,13 +173,13 @@ def login_probably_saved(root: Path, folder: str) -> bool:
     return False
 
 
-def running_brave_cmdlines() -> list[list[str]]:
-    """Command lines of main Brave browser processes (not helper processes). Needs psutil."""
+def running_brave_processes() -> list[tuple[int, list[str]]]:
+    """(pid, command line) of main Brave browser processes, not helpers. Needs psutil."""
     try:
         import psutil
     except ImportError:
         return []
-    result: list[list[str]] = []
+    result: list[tuple[int, list[str]]] = []
     for proc in psutil.process_iter(["name", "cmdline"]):
         try:
             name = (proc.info.get("name") or "").lower()
@@ -187,8 +187,13 @@ def running_brave_cmdlines() -> list[list[str]]:
         except (psutil.Error, OSError):
             continue
         if "brave" in name and cmd and not any(part.startswith("--type=") for part in cmd):
-            result.append(list(cmd))
+            result.append((proc.pid, list(cmd)))
     return result
+
+
+def running_brave_cmdlines() -> list[list[str]]:
+    """Command lines of main Brave browser processes (not helper processes). Needs psutil."""
+    return [cmd for _, cmd in running_brave_processes()]
 
 
 def _flag(cmd: list[str], name: str) -> str | None:

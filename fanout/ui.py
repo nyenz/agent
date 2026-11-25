@@ -8,17 +8,22 @@ from __future__ import annotations
 
 import logging
 import queue
+import shutil
+import tempfile
 import threading
 import tkinter as tk
 import webbrowser
 from collections.abc import Callable
+from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any
 
 from . import __version__
-from .brave import DOWNLOAD_URL, BraveProfile, ScanResult, scan
+from .brave import DOWNLOAD_URL, BraveProfile, ScanResult, running_brave_cmdlines, scan
 from .config import MAX_ACCOUNTS, Config
 from .errors import FriendlyError, describe
+from .sessions import SlotSpec, account_color, app_managed_specs, plan_reuse_profiles
+from .worker import Worker
 
 log = logging.getLogger(__name__)
 
@@ -58,12 +63,15 @@ class FanOutApp:
         save: Callable[[Config], None],
         scan_fn: Callable[[], ScanResult] = scan,
         on_screen: Callable[[str, str], None] | None = None,
+        worker_factory: Callable[[queue.Queue[tuple[str, Any]]], Worker] = Worker,
     ) -> None:
         self.root = root
         self.cfg = cfg
         self.save = save
         self.scan_fn = scan_fn
         self.on_screen = on_screen
+        self.worker_factory = worker_factory
+        self.worker: Worker | None = None
         self.events: queue.Queue[tuple[str, Any]] = queue.Queue()
         self.result: ScanResult | None = None
         self.picked: list[str] = []
@@ -72,6 +80,14 @@ class FanOutApp:
         self.status_var = tk.StringVar()
         self.mode_var = tk.StringVar(value=cfg.mode)
         self.accounts_var = tk.IntVar(value=cfg.num_accounts)
+        self.import_var = tk.BooleanVar(value=cfg.import_logins)
+        self.slot_vars: dict[int, tk.StringVar] = {}
+        self.slot_ready: dict[int, bool] = {}
+        self.slot_notes: dict[int, str] = {}
+        self.continue_button: ttk.Button | None = None
+        self.pending_profiles: list[BraveProfile] = []
+        self.temp_dir: Path | None = None
+        self.after_windows_closed: Callable[[], None] | None = None
 
         root.title(f"FanOut {__version__}")
         root.geometry("940x600")
@@ -98,14 +114,24 @@ class FanOutApp:
                     self.on_scan(payload)
                 elif kind == "scan_error":
                     self.show_problem(describe(payload))
+                else:
+                    self.on_worker_event(kind, payload)
         except queue.Empty:
             pass
         finally:
             self._pump_job = self.root.after(PUMP_MS, self.pump)
 
     def close(self) -> None:
-        """Stop the pump and close the window."""
+        """Close every browser window cleanly, remember where they were, then close the app."""
         self.root.after_cancel(self._pump_job)
+        if self.worker is not None:
+            self._clear()
+            ttk.Label(self.body, text="Closing browser windows...", font=("TkDefaultFont", 13)).pack(pady=140)
+            self.root.update_idletasks()
+            self.worker.shutdown()
+            if self.worker.final_snapshot:
+                self._apply_snapshot(self.worker.final_snapshot)
+        self._remove_temp_dir()
         self.root.destroy()
 
     def _on_tk_error(self, exc_type: type[BaseException], exc: BaseException, tb: Any) -> None:
@@ -214,6 +240,7 @@ class FanOutApp:
         saved = [k for k in self.cfg.selected_profiles if k in known]
         self.picked = saved or [profile_key(p) for p in profiles[:DEFAULT_PICKS]]
         self.status_var.set("")
+        self.mode_var.set("reuse_profiles" if self.cfg.mode == "reuse_profiles" else "app_managed")
 
         self._clear()
         ttk.Label(self.body, text="Choose your accounts", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
@@ -257,18 +284,18 @@ class FanOutApp:
             anchor="w"
         )
         ttk.Radiobutton(
-            mode,
-            text="Reuse my real Brave profiles (advanced - coming in a later update)",
-            value="reuse_profiles",
-            variable=self.mode_var,
-            state="disabled",
+            mode, text="Reuse my real Brave profiles (advanced)", value="reuse_profiles", variable=self.mode_var
         ).pack(anchor="w")
-        self.mode_var.set("app_managed")
+        ttk.Checkbutton(
+            mode,
+            text="Try to copy my existing logins into the new windows (optional; if it fails you just log in once)",
+            variable=self.import_var,
+        ).pack(anchor="w", pady=(6, 0))
 
         bar = ttk.Frame(self.body)
         bar.pack(fill="x", pady=(12, 0))
         ttk.Label(bar, textvariable=self.count_var).pack(side="left")
-        ttk.Button(bar, text="Save selection", command=self.save_selection).pack(side="right")
+        ttk.Button(bar, text="Continue", command=self.continue_clicked).pack(side="right")
         ttk.Button(bar, text="Rescan", command=self.start_scan).pack(side="right", padx=8)
         ttk.Label(self.body, textvariable=self.status_var, wraplength=800).pack(anchor="w", pady=(8, 0))
         ttk.Label(
@@ -318,23 +345,255 @@ class FanOutApp:
     def _update_count(self) -> None:
         self.count_var.set(f"{len(self.picked)} of {MAX_ACCOUNTS} selected" if self.result and self.result.profiles else "")
 
-    def save_selection(self) -> None:
-        """Store the choice. Opening the windows is the next build step."""
+    def _picked_profiles(self) -> list[BraveProfile]:
+        """Ticked profiles, in the order they were ticked."""
+        assert self.result is not None
+        by_key = {profile_key(p): p for p in self.result.profiles}
+        return [by_key[k] for k in self.picked if k in by_key]
+
+    def save_selection(self) -> int | None:
+        """Store the choice and return the number of accounts, or None if it can't continue."""
         assert self.result is not None
         if self.result.profiles:
             if not self.picked:
                 self.status_var.set("Tick at least one profile first.")
-                return
+                return None
             count = len(self.picked)
         else:
+            if self.mode_var.get() == "reuse_profiles":
+                self.status_var.set("Reusing real profiles needs Brave profiles to pick from.")
+                return None
             try:
                 count = int(self.accounts_var.get())
             except tk.TclError:
                 count = DEFAULT_PICKS
         self.cfg.num_accounts = max(1, min(MAX_ACCOUNTS, count))
         self.cfg.selected_profiles = list(self.picked)
-        self.cfg.mode = "app_managed"
+        self.cfg.mode = self.mode_var.get()
+        self.cfg.import_logins = bool(self.import_var.get())
         self.save(self.cfg)
-        self.status_var.set(
-            f"Saved: {self.cfg.num_accounts} account(s). Opening the login windows arrives in the next update."
+        return self.cfg.num_accounts
+
+    # ----- opening windows ------------------------------------------------------------------
+
+    def continue_clicked(self) -> None:
+        """Open the account windows in the chosen mode."""
+        count = self.save_selection()
+        if count is None:
+            return
+        profiles = self._picked_profiles()
+        if self.mode_var.get() == "reuse_profiles":
+            if running_brave_cmdlines():
+                choice = self._ask_brave_open()
+                if choice == "cancel":
+                    return
+                if choice == "close":
+                    self.pending_profiles = profiles
+                    self.show_splash()
+                    self._submit("close_brave")
+                    return
+                self.mode_var.set("app_managed")
+                self.cfg.mode = "app_managed"
+                self.save(self.cfg)
+            else:
+                self._confirm_and_reuse(profiles)
+                return
+        sources = [p.path for p in profiles] if self.cfg.import_logins else None
+        self._open(app_managed_specs(count, sources))
+
+    def _confirm_and_reuse(self, profiles: list[BraveProfile]) -> None:
+        """Warn that real profiles will be changed, then open them."""
+        ok = messagebox.askokcancel(
+            "Use my real Brave profiles",
+            "Changes you make in these windows (logins, history, settings) affect your real Brave "
+            "profiles. FanOut never reads or stores your login details.\n\nContinue?",
         )
+        if not ok:
+            self.show_scan()
+            return
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="fanout-"))
+        self._open(plan_reuse_profiles(profiles, self.temp_dir))
+
+    def _ask_brave_open(self) -> str:
+        """Blocking three-way dialog. Returns 'close', 'managed' or 'cancel'."""
+        choice = tk.StringVar(value="cancel")
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Brave is open")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        ttk.Label(
+            dialog,
+            text=(
+                "Brave looks like it's running. To reuse your real profiles, Brave has to be closed first.\n"
+                "FanOut can ask it to close politely (it never forces it), or use its own windows instead."
+            ),
+            wraplength=460,
+            padding=16,
+        ).pack()
+        row = ttk.Frame(dialog, padding=(16, 0, 16, 16))
+        row.pack()
+        for label, value in (
+            ("Close Brave for me", "close"),
+            ("Use app-managed windows instead", "managed"),
+            ("Cancel", "cancel"),
+        ):
+            ttk.Button(row, text=label, command=lambda v=value: (choice.set(v), dialog.destroy())).pack(
+                side="left", padx=4
+            )
+        dialog.protocol("WM_DELETE_WINDOW", lambda: (choice.set("cancel"), dialog.destroy()))
+        dialog.grab_set()
+        self.root.wait_window(dialog)
+        return choice.get()
+
+    def _exe(self) -> Path | None:
+        """Brave, unless the person chose the built-in Chromium (or there is no Brave)."""
+        if self.cfg.use_bundled_chromium or self.result is None:
+            return None
+        return self.result.exe
+
+    def _submit(self, command: str, **payload: object) -> None:
+        """Send a command to the worker, starting it on first use."""
+        if self.worker is None:
+            self.worker = self.worker_factory(self.events)
+            self.worker.start()
+        self.worker.submit(command, **payload)
+
+    def _open(self, specs: list[SlotSpec]) -> None:
+        self.show_login(len(specs))
+        self._submit(
+            "open_windows",
+            specs=specs,
+            exe=self._exe(),
+            screen=(self.root.winfo_screenwidth(), self.root.winfo_screenheight()),
+            geometry=dict(self.cfg.window_geometry),
+            last_urls=dict(self.cfg.last_urls),
+        )
+
+    # ----- login screen ---------------------------------------------------------------------
+
+    def show_login(self, count: int) -> None:
+        """One row per account; READY appears when that window shows a chat input."""
+        self._clear()
+        self.slot_vars, self.slot_ready, self.slot_notes = {}, {}, {}
+        ttk.Label(self.body, text="Log in to a chat site in each window", font=("TkDefaultFont", 16, "bold")).pack(
+            anchor="w"
+        )
+        ttk.Label(
+            self.body,
+            text="Use a different site in each window and log in yourself. 'READY' appears when the chat box is found.",
+            wraplength=800,
+        ).pack(anchor="w", pady=(0, 12))
+        for number in range(1, count + 1):
+            row = ttk.Frame(self.body)
+            row.pack(fill="x", pady=4)
+            tk.Label(row, text=f" ACCOUNT {number} ", bg=account_color(number), fg="white", width=14).pack(side="left")
+            var = tk.StringVar(value="Opening window...")
+            self.slot_vars[number] = var
+            self.slot_ready[number] = False
+            ttk.Label(row, textvariable=var, wraplength=640, justify="left").pack(side="left", padx=12)
+        bar = ttk.Frame(self.body)
+        bar.pack(fill="x", pady=(18, 0))
+        self.continue_button = ttk.Button(bar, text="All ready - continue", command=self.finish_login, state="disabled")
+        self.continue_button.pack(side="right")
+        ttk.Button(bar, text="Close windows and go back", command=self.back_to_scan).pack(side="right", padx=8)
+        self._announce("login", f"{count} windows")
+
+    def _set_slot(self, number: int, text: str) -> None:
+        var = self.slot_vars.get(number)
+        if var is not None:
+            note = self.slot_notes.get(number)
+            var.set(f"{text}\n{note}" if note else text)
+
+    def _refresh_continue(self) -> None:
+        if self.continue_button is not None:
+            ready = any(self.slot_ready.values())
+            self.continue_button.configure(state="normal" if ready else "disabled")
+
+    def on_worker_event(self, kind: str, data: dict[str, object]) -> None:
+        """Apply an event from the browser helper thread (runs on the Tk thread)."""
+        slot = int(data.get("slot", 0))  # type: ignore[call-overload]
+        if kind == "slot_open":
+            self._set_slot(slot, "Window open. Go to your chat site there and log in.")
+        elif kind == "slot_note":
+            self.slot_notes[slot] = str(data["message"])
+            var = self.slot_vars.get(slot)
+            if var is not None:
+                self._set_slot(slot, var.get().split("\n")[0])
+        elif kind == "slot_state":
+            ready, host = bool(data["ready"]), str(data.get("host") or "")
+            self.slot_ready[slot] = ready
+            if ready:
+                self._set_slot(slot, f"READY - {host}" if host else "READY")
+            else:
+                self._set_slot(slot, f"Waiting for you to log in... ({host})" if host else "Waiting for you to log in...")
+            self._refresh_continue()
+        elif kind == "slot_error":
+            self.slot_ready[slot] = False
+            self._set_slot(slot, f"Problem: {data['message']}\nWhat to try: {data['fix']}")
+            self._refresh_continue()
+        elif kind == "slot_closed":
+            self.slot_ready[slot] = False
+            self._set_slot(slot, "This window was closed.")
+            self._refresh_continue()
+        elif kind == "snapshot":
+            self._apply_snapshot(data)
+        elif kind == "brave_closed":
+            self._on_brave_closed(bool(data["ok"]))
+        elif kind == "windows_closed":
+            self._remove_temp_dir()
+            callback, self.after_windows_closed = self.after_windows_closed, None
+            if callback:
+                callback()
+        elif kind == "worker_error":
+            messagebox.showerror("FanOut", f"{data['message']}\n\nWhat to try: {data['fix']}")
+            self.show_scan()
+
+    def _on_brave_closed(self, ok: bool) -> None:
+        if ok:
+            self._confirm_and_reuse(self.pending_profiles)
+        else:
+            messagebox.showinfo(
+                "Brave is still open",
+                "Brave didn't close. Please close it yourself (check the system tray), then click Continue again.",
+            )
+            self.show_scan()
+
+    def _apply_snapshot(self, data: dict[str, object]) -> None:
+        """Remember window positions and sites (origin only) for next launch."""
+        geometry, urls = data.get("window_geometry"), data.get("last_urls")
+        if isinstance(geometry, dict):
+            self.cfg.window_geometry.update(geometry)
+        if isinstance(urls, dict):
+            self.cfg.last_urls.update(urls)
+        self.save(self.cfg)
+
+    def _remove_temp_dir(self) -> None:
+        if self.temp_dir is not None:
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+            self.temp_dir = None
+
+    def finish_login(self) -> None:
+        """Continue with however many accounts are READY."""
+        ready = sorted(n for n, ok in self.slot_ready.items() if ok)
+        self._submit("snapshot")
+        self._clear()
+        ttk.Label(self.body, text="Logins are ready", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
+        ttk.Label(
+            self.body,
+            text=(
+                f"{len(ready)} account(s) ready: {', '.join(f'ACCOUNT {n}' for n in ready)}. "
+                "The prompt screen arrives in the next update; your windows stay open until you go back or quit."
+            ),
+            wraplength=800,
+        ).pack(anchor="w", pady=(8, 16))
+        ttk.Button(self.body, text="Close windows and go back", command=self.back_to_scan).pack(anchor="w")
+        self._announce("logins-ready", f"{len(ready)} ready")
+
+    def back_to_scan(self) -> None:
+        """Close the browser windows, then return to the Scan screen."""
+        if self.worker is None:
+            self.show_scan()
+            return
+        self.after_windows_closed = self.show_scan
+        self.show_splash()
+        self._submit("close_windows")
