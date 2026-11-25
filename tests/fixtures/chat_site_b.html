@@ -1,0 +1,12 @@
+<!doctype html>
+<title>Fake chat site B</title>
+<style>body { font-family: sans-serif; margin: 0; padding: 70px 20px 20px; } textarea { width: 400px; height: 70px; display: block; }</style>
+<input type="text" id="search" placeholder="Search chats">
+<textarea id=":r1a:" placeholder="Ask anything"></textarea>
+<button>Send</button>
+<button>Cancel</button>
+<script>
+  window.clicks = 0; window.sent = 0;
+  document.querySelectorAll("button")[0].addEventListener("click", () => { window.sent++; });
+  document.addEventListener("click", () => { window.clicks++; });
+</script>

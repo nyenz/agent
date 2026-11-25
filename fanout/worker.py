@@ -87,6 +87,8 @@ class Worker:
             "open_windows": manager.open_all,
             "close_windows": manager.close_all,
             "close_brave": manager.close_user_brave,
+            "map_account": manager.map_account,
+            "pick_element": manager.pick_element,
         }
         try:
             if command == "snapshot":

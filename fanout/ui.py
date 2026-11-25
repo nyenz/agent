@@ -22,6 +22,7 @@ from . import __version__
 from .brave import DOWNLOAD_URL, BraveProfile, ScanResult, running_brave_cmdlines, scan
 from .config import MAX_ACCOUNTS, Config
 from .errors import FriendlyError, describe
+from .mapping import Mapping, find_by_host, store_mapping
 from .sessions import SlotSpec, account_color, app_managed_specs, plan_reuse_profiles
 from .worker import Worker
 
@@ -84,6 +85,10 @@ class FanOutApp:
         self.slot_vars: dict[int, tk.StringVar] = {}
         self.slot_ready: dict[int, bool] = {}
         self.slot_notes: dict[int, str] = {}
+        self.slot_map: dict[int, str] = {}  # latest mapping message per account
+        self.slot_host: dict[int, str] = {}
+        self.slot_buttons: dict[int, list[ttk.Button]] = {}
+        self.fix: FixDialog | None = None
         self.continue_button: ttk.Button | None = None
         self.pending_profiles: list[BraveProfile] = []
         self.temp_dir: Path | None = None
@@ -141,6 +146,8 @@ class FanOutApp:
         messagebox.showerror("FanOut", friendly.text())
 
     def _clear(self) -> None:
+        if self.fix is not None:
+            self.fix.close()
         for child in self.body.winfo_children():
             child.destroy()
         self.tree = None
@@ -475,6 +482,7 @@ class FanOutApp:
         """One row per account; READY appears when that window shows a chat input."""
         self._clear()
         self.slot_vars, self.slot_ready, self.slot_notes = {}, {}, {}
+        self.slot_map, self.slot_host, self.slot_buttons = {}, {}, {}
         ttk.Label(self.body, text="Log in to a chat site in each window", font=("TkDefaultFont", 16, "bold")).pack(
             anchor="w"
         )
@@ -490,7 +498,12 @@ class FanOutApp:
             var = tk.StringVar(value="Opening window...")
             self.slot_vars[number] = var
             self.slot_ready[number] = False
-            ttk.Label(row, textvariable=var, wraplength=640, justify="left").pack(side="left", padx=12)
+            ttk.Label(row, textvariable=var, wraplength=480, justify="left").pack(side="left", padx=12)
+            fix_button = ttk.Button(row, text="Fix by clicking", command=lambda n=number: self.open_fix(n), state="disabled")
+            fix_button.pack(side="right", padx=(6, 0))
+            map_button = ttk.Button(row, text="Map this account", command=lambda n=number: self.map_clicked(n), state="disabled")
+            map_button.pack(side="right")
+            self.slot_buttons[number] = [map_button, fix_button]
         bar = ttk.Frame(self.body)
         bar.pack(fill="x", pady=(18, 0))
         self.continue_button = ttk.Button(bar, text="All ready - continue", command=self.finish_login, state="disabled")
@@ -501,8 +514,39 @@ class FanOutApp:
     def _set_slot(self, number: int, text: str) -> None:
         var = self.slot_vars.get(number)
         if var is not None:
-            note = self.slot_notes.get(number)
-            var.set(f"{text}\n{note}" if note else text)
+            extras = [t for t in (self.slot_notes.get(number), self.slot_map.get(number)) if t]
+            var.set("\n".join([text, *extras]))
+
+    def _enable_mapping(self, number: int, enabled: bool) -> None:
+        for button in self.slot_buttons.get(number, []):
+            button.configure(state="normal" if enabled else "disabled")
+
+    def map_clicked(self, number: int) -> None:
+        """Find this account's chat box and prove it with a harmless test (never sends anything)."""
+        self.slot_map[number] = "Checking the chat box..."
+        self._set_slot(number, self.slot_vars[number].get().split("\n")[0])
+        self._submit("map_account", slot=number)
+
+    def open_fix(self, number: int) -> None:
+        """Open the small window for pointing at things by clicking."""
+        if self.fix is not None:
+            self.fix.close()
+        saved = find_by_host(self.cfg.mappings, number, self.slot_host.get(number, ""))
+        self.fix = FixDialog(self, number, saved or Mapping())
+
+    def _on_map_result(self, slot: int, data: dict[str, object]) -> None:
+        ok, origin = bool(data["ok"]), str(data.get("origin") or "")
+        mapping = Mapping.from_dict(data.get("mapping"))  # type: ignore[arg-type]
+        notes = [str(n) for n in data.get("notes") or []]  # type: ignore[attr-defined]
+        if ok and origin:
+            store_mapping(self.cfg.mappings, slot, origin, mapping)
+            self.save(self.cfg)
+        lines = [str(data["message"])] if ok else [str(data["message"]), f"What to try: {data['fix']}"]
+        self.slot_map[slot] = "\n".join(lines + notes)
+        if slot in self.slot_vars:
+            self._set_slot(slot, self.slot_vars[slot].get().split("\n")[0])
+        if self.fix is not None and self.fix.slot == slot:
+            self.fix.on_map(ok, self.slot_map[slot], mapping)
 
     def _refresh_continue(self) -> None:
         if self.continue_button is not None:
@@ -522,17 +566,28 @@ class FanOutApp:
         elif kind == "slot_state":
             ready, host = bool(data["ready"]), str(data.get("host") or "")
             self.slot_ready[slot] = ready
+            self.slot_host[slot] = host
+            self._enable_mapping(slot, ready)
+            if ready and slot not in self.slot_map and find_by_host(self.cfg.mappings, slot, host):
+                self.slot_map[slot] = "Chat box already mapped from last time."
             if ready:
                 self._set_slot(slot, f"READY - {host}" if host else "READY")
             else:
                 self._set_slot(slot, f"Waiting for you to log in... ({host})" if host else "Waiting for you to log in...")
             self._refresh_continue()
+        elif kind == "map_result":
+            self._on_map_result(slot, data)
+        elif kind == "pick_result":
+            if self.fix is not None and self.fix.slot == slot:
+                self.fix.on_pick(str(data["pick_kind"]), bool(data["ok"]), str(data["selector"]))
         elif kind == "slot_error":
             self.slot_ready[slot] = False
+            self._enable_mapping(slot, False)
             self._set_slot(slot, f"Problem: {data['message']}\nWhat to try: {data['fix']}")
             self._refresh_continue()
         elif kind == "slot_closed":
             self.slot_ready[slot] = False
+            self._enable_mapping(slot, False)
             self._set_slot(slot, "This window was closed.")
             self._refresh_continue()
         elif kind == "snapshot":
@@ -597,3 +652,94 @@ class FanOutApp:
         self.after_windows_closed = self.show_scan
         self.show_splash()
         self._submit("close_windows")
+
+
+class FixDialog:
+    """Small window for pointing at the chat box, send button and reply text by clicking them."""
+
+    FIELDS = (
+        ("input_selector", "input", "chat box"),
+        ("send_selector", "send", "send button"),
+        ("message_selector", "message", "reply text"),
+    )
+
+    def __init__(self, app: FanOutApp, slot: int, current: Mapping) -> None:
+        self.app, self.slot = app, slot
+        self.window = tk.Toplevel(app.root)
+        self.window.title(f"Fix ACCOUNT {slot}")
+        self.window.transient(app.root)
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+        self.vars = {key: tk.StringVar(value=getattr(current, key)) for key, _, _ in self.FIELDS}
+        self.marks = {key: tk.StringVar() for key, _, _ in self.FIELDS}
+        self.status = tk.StringVar(value="Press a button, then click that thing in the browser window.")
+        frame = ttk.Frame(self.window, padding=14)
+        frame.pack(fill="both", expand=True)
+        tk.Label(frame, text=f" ACCOUNT {slot} ", bg=account_color(slot), fg="white").pack(anchor="w")
+        ttk.Label(frame, textvariable=self.status, wraplength=420, justify="left").pack(anchor="w", pady=(8, 10))
+        for key, kind, label in self.FIELDS:
+            row = ttk.Frame(frame)
+            row.pack(fill="x", pady=3)
+            ttk.Button(row, text=f"Pick the {label}", width=22, command=lambda k=kind: self.pick(k)).pack(side="left")
+            ttk.Label(row, textvariable=self.marks[key]).pack(side="left", padx=10)
+            self.vars[key].trace_add("write", lambda *_: self._refresh())
+        self.advanced = ttk.Frame(frame)
+        for key, _, label in self.FIELDS:
+            line = ttk.Frame(self.advanced)
+            line.pack(fill="x", pady=2)
+            ttk.Label(line, text=label.capitalize(), width=12).pack(side="left")
+            ttk.Entry(line, textvariable=self.vars[key], width=44).pack(side="left")
+        self.toggle = ttk.Button(frame, text="Advanced (type it in)", command=self._toggle_advanced)
+        self.toggle.pack(anchor="w", pady=(8, 0))
+        bar = ttk.Frame(frame)
+        bar.pack(fill="x", pady=(14, 0))
+        ttk.Button(bar, text="Close", command=self.close).pack(side="right")
+        ttk.Button(bar, text="Test and save", command=self.test).pack(side="right", padx=8)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        for key, var in self.vars.items():
+            self.marks[key].set("set" if var.get().strip() else "not set")
+
+    def _toggle_advanced(self) -> None:
+        if self.advanced.winfo_ismapped():
+            self.advanced.pack_forget()
+        else:
+            self.advanced.pack(fill="x", after=self.toggle)
+
+    def current(self) -> Mapping:
+        """What is typed or picked right now."""
+        return Mapping(**{key: var.get().strip() for key, var in self.vars.items()})
+
+    def pick(self, kind: str) -> None:
+        """Ask the browser window to let the person click the element."""
+        label = next(label for _, k, label in self.FIELDS if k == kind)
+        self.status.set(f"Now click the {label} in the ACCOUNT {self.slot} window. Press Esc there to cancel.")
+        self.app._submit("pick_element", slot=self.slot, kind=kind)
+
+    def on_pick(self, kind: str, ok: bool, selector: str) -> None:
+        """The person clicked (or cancelled)."""
+        if ok and selector:
+            key = next(key for key, k, _ in self.FIELDS if k == kind)
+            self.vars[key].set(selector)
+            self.status.set("Got it. Pick the next one, or press 'Test and save'.")
+        else:
+            self.status.set("Nothing was picked.")
+
+    def test(self) -> None:
+        """Try the current selectors with a harmless test (types a test word, then clears it)."""
+        self.status.set("Testing...")
+        self.app._submit("map_account", slot=self.slot, mapping=self.current().to_dict())
+
+    def on_map(self, ok: bool, text: str, mapping: Mapping) -> None:
+        """Show the test result; keep any selectors the test filled in."""
+        self.status.set(text)
+        if ok:
+            for key, var in self.vars.items():
+                var.set(getattr(mapping, key))
+
+    def close(self) -> None:
+        """Close the window."""
+        if self.app.fix is self:
+            self.app.fix = None
+        if self.window.winfo_exists():
+            self.window.destroy()

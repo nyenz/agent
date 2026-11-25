@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit
 
+from . import mapping as mapping_tools
 from .brave import BraveProfile, running_brave_processes
 from .config import app_data_dir
 from .errors import describe
@@ -400,6 +401,54 @@ class SessionManager:
             watcher.cancel()
         self._contexts.pop(number, None)
         self.emit("slot_closed", slot=number)
+
+    # ----- mapping --------------------------------------------------------------------------
+
+    def _chat_page(self, number: int) -> Any | None:
+        """The window's page that shows a website (not the built-in start page), if any."""
+        context = self._contexts.get(number)
+        pages = [p for p in (context.pages if context else []) if origin_of(p.url)]
+        return pages[-1] if pages else None
+
+    def _no_page(self, number: int) -> None:
+        self.emit(
+            "map_result",
+            slot=number,
+            ok=False,
+            message=f"Account {number}: there is no chat page open in that window.",
+            fix="Go to your chat site in that window and log in first.",
+            origin="",
+            mapping={},
+            notes=[],
+        )
+
+    async def map_account(self, slot: int, mapping: dict[str, str] | None = None) -> None:
+        """Auto-detect this window's chat page (or test the given selectors) with a harmless dry run."""
+        page = self._chat_page(slot)
+        if page is None:
+            self._no_page(slot)
+            return
+        given = mapping_tools.Mapping.from_dict(mapping) if mapping else None
+        result = await mapping_tools.map_account(page, slot, given)
+        self.emit(
+            "map_result",
+            slot=slot,
+            ok=result.ok,
+            message=result.message,
+            fix=result.fix,
+            origin=origin_of(page.url) or "",
+            mapping=result.mapping.to_dict(),
+            notes=result.notes,
+        )
+
+    async def pick_element(self, slot: int, kind: str) -> None:
+        """Let the person click the chat box, send button or a reply in this window."""
+        page = self._chat_page(slot)
+        if page is None:
+            self._no_page(slot)
+            return
+        picked = await mapping_tools.pick(page, kind)
+        self.emit("pick_result", slot=slot, pick_kind=kind, ok=picked.ok, selector=picked.selector, cancelled=picked.cancelled)
 
     # ----- reporting and closing ------------------------------------------------------------
 

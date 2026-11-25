@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 CONFIG_VERSION = 1
 MAX_ACCOUNTS = 6
+MAPPING_KEYS = ("input_selector", "send_selector", "message_selector")
 
 
 @dataclass
@@ -35,6 +36,7 @@ class Config:
     import_logins: bool = False
     window_geometry: dict[str, list[int]] = field(default_factory=dict)  # "1" -> [x, y, w, h]
     last_urls: dict[str, str] = field(default_factory=dict)  # "1" -> "https://site.example" (origin only)
+    mappings: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)  # "1" -> origin -> selectors
 
 
 def app_data_dir() -> Path:
@@ -78,6 +80,23 @@ def migrate(raw: dict[str, Any]) -> dict[str, Any]:
     return raw
 
 
+def clean_mappings(raw: Any) -> dict[str, dict[str, dict[str, str]]]:
+    """Keep only well-formed account -> origin -> {selector name: text} entries."""
+    result: dict[str, dict[str, dict[str, str]]] = {}
+    if not isinstance(raw, dict):
+        return result
+    for account, sites in raw.items():
+        if not isinstance(sites, dict):
+            continue
+        for origin, selectors in sites.items():
+            if not isinstance(origin, str) or not origin.startswith("http") or not isinstance(selectors, dict):
+                continue
+            kept = {k: selectors[k] for k in MAPPING_KEYS if isinstance(selectors.get(k), str)}
+            if kept:
+                result.setdefault(str(account), {})[origin] = kept
+    return result
+
+
 def _clean(raw: dict[str, Any]) -> Config:
     """Build a Config from raw JSON, ignoring unknown keys and wrong-typed values."""
     defaults = Config()
@@ -100,6 +119,7 @@ def _clean(raw: dict[str, Any]) -> Config:
         if isinstance(v, list) and len(v) == 4 and all(isinstance(n, int) and not isinstance(n, bool) for n in v)
     }
     cfg.last_urls = {str(k): v for k, v in cfg.last_urls.items() if isinstance(v, str) and v.startswith("http")}
+    cfg.mappings = clean_mappings(cfg.mappings)
     cfg.min_delay_seconds = max(0.0, cfg.min_delay_seconds)
     cfg.stable_seconds = max(1.0, min(30.0, cfg.stable_seconds))
     cfg.timeout_seconds = max(10, min(1800, cfg.timeout_seconds))
