@@ -13,7 +13,7 @@
   "7": "in_progress"
  },
  "current_stage": 1,
- "last_verified_step": "GitHub Actions run 45990579939 on commit 06337e0: lint success; test ubuntu 177 passed, macos 177 passed, windows 176 passed + 1 skipped; `app.py --smoke-test` printed 'first screen = brave-missing' on all three. Local: python3 -m pytest --ignore=tests/test_ui.py all green, ruff check . clean.",
+ "last_verified_step": "GitHub Actions run 45999364803 on commit eb6c19c (code review fixes): lint, windows, macos and ubuntu all green, including the real Tk tests and app.py --smoke-test. Local: pytest 166 passed 1 skipped, ruff clean, pyright 0 errors.",
  "next_action": "FIRST, on github.com/nyenz/agent: Releases > Draft a new release > in 'Choose a tag' type v0.2.0 and pick 'Create new tag: v0.2.0 on publish' > Publish release. The release workflow then attaches the source zip + checksum and any packaged builds and fills in the notes. Also on the repo page press the gear next to About: paste a one-line description and add topics python, tkinter, playwright, automation, brave, ai, desktop-app. THEN the real-machine checks: On your real Windows 11 machine with real Brave and 2 chat sites: (1) double-click INSTALL.bat, check it finishes and a FanOut shortcut appears. (2) Stage 1: python app.py --list-profiles vs Local State. (3) Stage 2: pick 3 profiles, Continue, 3 tiled windows with banners, log in, READY, restart keeps logins, Task Manager shows no Brave left after closing. (4) Stage 3: Map this account / Fix by clicking on 2 real sites. (5) Stage 4: 3 prompts, Send to all, answers fill in, Copy all, results folder. (6) Settings: Check for updates, Repair installation. Then mark stages 1-7 verified_done.",
  "files_touched": [
   ".gitignore",
@@ -123,6 +123,6 @@
   "Update banner, Settings dialog and results screen appearance have never been looked at in a real window by a person (tests drive them, nobody has seen them)",
   "Mode B (reuse real Brave profiles) risk: newer Chromium may refuse automation on the default user data folder; unverified with real Brave"
  ],
- "last_commit": "ec71db9",
+ "last_commit": "eb6c19c",
  "safety_baseline": "Tracked files are code, tests, .gitignore and FANOUT_STATE.json only. .gitignore excludes sessions/ browser_profile/ config.json results/ logs/ .venv/ install_state.json .backup/ dist/ build/. App data (config, sessions, logs) lives in the per-user app data folder, outside the repo. Login import copies only Network/Cookies(+journal), Preferences and Local State."
 }
