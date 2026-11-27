@@ -2,6 +2,15 @@
 
 All notable changes. Newest first. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Compatibility mode** (Settings, on by default): each app-managed window now starts as an ordinary browser with its own profile folder and a control port on this computer only. You log in by hand, then FanOut connects to the running window and does everything it did before (banner, READY, mapping, sending, answers). This lets sites that ask you to prove you are human accept your login instead of looping the check. Nothing is faked or hidden, and FanOut still never solves a check for you.
+- If a window can't be opened that way, FanOut opens it the standard way and shows a plain note. Windows that reuse your real Brave profiles keep the standard way (newer browsers ignore the control port there).
+
+### Changed
+- Closing now asks the browser to quit first (so your login is saved), then ends it, and clears up any leftover FanOut browser by its own port, never your own Brave.
+
 ## [0.2.0] - 2026-11-27
 
 First published version.

@@ -7,12 +7,16 @@ Everything that touches Playwright lives here and runs on the worker thread's as
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import http.client
 import json
 import logging
 import os
 import shutil
+import socket
 import sys
-from collections.abc import Awaitable, Callable, Sequence
+import urllib.request
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,13 +26,16 @@ from . import engine
 from . import mapping as mapping_tools
 from .brave import BraveProfile, running_brave_processes
 from .config import app_data_dir
-from .errors import describe
+from .errors import AttachError, describe
 from .logging_setup import log_dir
 
 log = logging.getLogger(__name__)
 
 ACCOUNT_COLORS = ("#d9480f", "#1971c2", "#2f9e44", "#9c36b5", "#c2255c", "#0c8599")
 BANNER_HEIGHT = 28
+
+ATTACH_WAIT_SECONDS = 30.0  # how long a normally-launched browser gets to open its local control port
+CLOSE_GRACE_SECONDS = 5.0  # after "Browser.close", how long it gets to save cookies and exit before terminate()
 
 # The ONLY files an optional login import may copy. Saved-login databases, history,
 # extensions and caches are never touched.
@@ -206,10 +213,56 @@ def _is_ours(proc: Any, me: Any) -> bool:
         return False
 
 
-def reap_orphans(private_dirs: list[Path]) -> int:
-    """Terminate browsers still using our private profile folders (or our own child browsers).
+def _bind_free_port() -> int:
+    """Ask the system for a free port on this computer only, then give it back."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))  # loopback only, never 0.0.0.0
+        return int(sock.getsockname()[1])
 
-    Called after a normal close, so it normally finds nothing. Returns how many it stopped.
+
+def free_port(taken: Collection[int] = ()) -> int:
+    """A free local port that none of our other windows is using. Tries again if two ask at once."""
+    for _ in range(20):
+        port = _bind_free_port()
+        if port not in taken:
+            return port
+    raise AttachError("no free local port was available for a browser window")
+
+
+def debug_port_answers(port: int) -> bool:
+    """True once the browser on this local port answers. Standard library only; never goes through a proxy."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(f"http://127.0.0.1:{port}/json/version", timeout=1.0) as reply:
+            return bool(reply.status == 200)
+    except (OSError, ValueError, http.client.HTTPException):
+        return False
+
+
+def browser_command(exe: Path, port: int, user_data_dir: Path, rect: tuple[int, int, int, int]) -> list[str]:
+    """The command that starts a NORMAL browser window we can attach to afterwards.
+
+    No automation switches and nothing that hides anything: it is the browser as you would start it,
+    plus a private profile folder, a control port on this computer only, and the window's place.
+    """
+    x, y, w, h = rect
+    return [
+        str(exe),
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={user_data_dir}",
+        f"--window-position={x},{y}",
+        f"--window-size={w},{h}",
+        "--no-first-run",
+        "--no-default-browser-check",
+    ]
+
+
+def reap_orphans(private_dirs: list[Path], ports: Sequence[int] = ()) -> int:
+    """Terminate browsers still using our private profile folders or our own debugging ports.
+
+    Called after a normal close, so it normally finds nothing. A process is matched by our folders, or by an
+    exact `--remote-debugging-port=<our port>` AND being a child of this program, so the person's own Brave is
+    never touched. Returns how many it stopped.
     """
     try:
         import psutil
@@ -217,13 +270,19 @@ def reap_orphans(private_dirs: list[Path]) -> int:
         return 0
     me = psutil.Process(os.getpid())
     wanted = [str(d) for d in private_dirs]
+    port_args = {f"--remote-debugging-port={p}" for p in ports}
     victims = []
     for proc in psutil.process_iter(["cmdline"]):
         try:
-            cmd = " ".join(proc.info.get("cmdline") or [])
+            parts = list(proc.info.get("cmdline") or [])
         except (psutil.Error, OSError):
             continue
-        if proc.pid != me.pid and any(w in cmd for w in wanted) and ("--user-data-dir" in cmd):
+        if proc.pid == me.pid:
+            continue
+        cmd = " ".join(parts)
+        by_folder = any(w in cmd for w in wanted) and ("--user-data-dir" in cmd)
+        by_port = bool(port_args.intersection(parts)) and _is_ours(proc, me)
+        if by_folder or by_port:
             victims.append(proc)
     for proc in victims:
         try:
@@ -247,24 +306,46 @@ async def _start_playwright() -> Any:
 
 Emit = Callable[..., None]
 PlaywrightFactory = Callable[[], Awaitable[Any]]
+Spawner = Callable[..., Awaitable[Any]]
+Probe = Callable[[int], bool]
 
 
 class SessionManager:
-    """Owns every Playwright object. Methods must only be awaited on the worker's loop."""
+    """Owns every Playwright object. Methods must only be awaited on the worker's loop.
+
+    Two ways to open a window. Compatibility mode (`attach=True`) starts the browser as a normal program and
+    attaches to it after you log in by hand; classic mode lets Playwright start it. Compatibility mode falls
+    back to classic mode if the browser can't be reached.
+    """
 
     def __init__(
         self,
         emit: Emit,
         playwright_factory: PlaywrightFactory = _start_playwright,
         poll_seconds: float = 1.0,
+        spawn: Spawner | None = None,
+        probe: Probe = debug_port_answers,
+        attach_wait_seconds: float = ATTACH_WAIT_SECONDS,
+        close_grace_seconds: float = CLOSE_GRACE_SECONDS,
+        extra_browser_args: Sequence[str] = (),
     ) -> None:
         self.emit = emit
         self._factory = playwright_factory
         self.poll_seconds = poll_seconds
+        self._spawn: Spawner = spawn or asyncio.create_subprocess_exec
+        self._probe = probe
+        self.attach_wait_seconds = attach_wait_seconds
+        self.close_grace_seconds = close_grace_seconds
+        self._extra_args = list(extra_browser_args)  # tests only (e.g. headless in CI); the app passes none
         self._pw: Any = None
         self._contexts: dict[int, Any] = {}
         self._specs: dict[int, SlotSpec] = {}
         self._watchers: dict[int, asyncio.Task[None]] = {}
+        # Compatibility mode only: the normally-started browser, our link to it, and its local port, per account.
+        self._procs: dict[int, Any] = {}
+        self._browsers: dict[int, Any] = {}
+        self._ports: dict[int, int] = {}
+        self._reserved: set[int] = set()
         self.sends = engine.SendTracker()
 
     # ----- opening --------------------------------------------------------------------------
@@ -276,16 +357,17 @@ class SessionManager:
         screen: tuple[int, int],
         geometry: dict[str, list[int]] | None = None,
         last_urls: dict[str, str] | None = None,
+        attach: bool = False,
     ) -> None:
         """Open every window at once. One failing window never stops the others."""
-        if self._contexts:
+        if self._contexts or self._procs:
             await self.close_all()
         if self._pw is None:
             self._pw = await self._factory()
         count = len(specs)
         results = await asyncio.gather(
             *(
-                self._open_one(spec, i, count, exe, screen, geometry or {}, last_urls or {})
+                self._open_one(spec, i, count, exe, screen, geometry or {}, last_urls or {}, attach)
                 for i, spec in enumerate(specs)
             ),
             return_exceptions=True,
@@ -295,8 +377,21 @@ class SessionManager:
                 friendly = describe(result)
                 self.emit("slot_error", slot=spec.number, message=friendly.message, fix=friendly.fix)
 
+    @staticmethod
+    def _can_attach(spec: SlotSpec) -> bool:
+        """Only FanOut's own profile folders can be opened this way. Newer browsers ignore the control port on
+        a real profile's default folder, so those keep the classic way."""
+        return not spec.profile_directory and sessions_dir() in spec.user_data_dir.parents
+
     async def _launch(
-        self, spec: SlotSpec, index: int, count: int, exe: Path | None, screen: tuple[int, int], saved: list[int] | None
+        self,
+        spec: SlotSpec,
+        index: int,
+        count: int,
+        exe: Path | None,
+        screen: tuple[int, int],
+        saved: list[int] | None,
+        attach: bool = False,
     ) -> tuple[Any, tuple[int, int, int, int]]:
         spec.user_data_dir.mkdir(parents=True, exist_ok=True)
         if spec.import_from is not None and not import_logins(spec.import_from, spec.user_data_dir):
@@ -307,6 +402,24 @@ class SessionManager:
             )
         rect = tuple(saved) if saved else tile_geometry(index, count, screen[0], screen[1])
         x, y, w, h = rect
+        if attach and self._can_attach(spec):
+            try:
+                return await self._launch_attached(spec, exe, (x, y, w, h)), (x, y, w, h)
+            except Exception as exc:
+                friendly = describe(exc)
+                self.emit(
+                    "slot_note",
+                    slot=spec.number,
+                    message=f"{friendly.message} FanOut opened it in standard mode instead. "
+                    "Some sites may ask you to prove you are human more than once.",
+                )
+        elif attach and not spec.temporary:
+            self.emit(
+                "slot_note",
+                slot=spec.number,
+                message="This window uses your real Brave profile, so it opens in standard mode. "
+                "App-managed windows can use compatibility mode instead.",
+            )
         args = [f"--window-position={x},{y}", f"--window-size={w},{h}"]
         if spec.profile_directory:
             args.append(f"--profile-directory={spec.profile_directory}")
@@ -315,6 +428,58 @@ class SessionManager:
             options["executable_path"] = str(exe)
         context = await self._pw.chromium.launch_persistent_context(str(spec.user_data_dir), **options)
         return context, (x, y, w, h)
+
+    async def _launch_attached(self, spec: SlotSpec, exe: Path | None, rect: tuple[int, int, int, int]) -> Any:
+        """Start the browser as a normal program, wait for its local control port, then attach to it.
+
+        You log in by hand in that normal window. FanOut attaches afterwards and does what it always does
+        (banner, READY detection, sending, reading answers). Logins live in the profile folder as in any browser.
+        """
+        number = spec.number
+        program = exe if exe is not None else Path(self._pw.chromium.executable_path)
+        port = free_port(set(self._ports.values()) | self._reserved)
+        self._reserved.add(port)
+        proc: Any = None
+        try:
+            command = [*browser_command(program, port, spec.user_data_dir, rect), *self._extra_args]
+            proc = await self._spawn(
+                *command,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await self._wait_for_port(port, proc)
+            browser = await asyncio.wait_for(self._pw.chromium.connect_over_cdp(f"http://127.0.0.1:{port}"), timeout=15)
+            contexts = list(browser.contexts)
+            if not contexts:
+                raise AttachError("the browser has no window to attach to")
+            context = contexts[0]
+            if not context.pages:
+                await context.new_page()
+        except asyncio.CancelledError:
+            self._kill_quietly(proc)
+            raise
+        except Exception:
+            if proc is not None:
+                await self._stop_process(proc, grace=0)
+            raise
+        finally:
+            self._reserved.discard(port)
+        self._procs[number], self._browsers[number], self._ports[number] = proc, browser, port
+        return context
+
+    async def _wait_for_port(self, port: int, proc: Any) -> None:
+        """Poll the browser's local control port until it answers. Gives up early if the browser exits."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.attach_wait_seconds
+        while True:
+            if proc.returncode is not None:
+                raise AttachError("the browser exited right after starting")
+            if await asyncio.to_thread(self._probe, port):
+                return
+            if loop.time() >= deadline:
+                raise AttachError("the browser did not open its local control port in time")
+            await asyncio.sleep(0.2)
 
     async def _open_one(
         self,
@@ -325,10 +490,11 @@ class SessionManager:
         screen: tuple[int, int],
         geometry: dict[str, list[int]],
         last_urls: dict[str, str],
+        attach: bool = False,
     ) -> None:
         saved = geometry.get(str(spec.number))
         try:
-            context, rect = await self._launch(spec, index, count, exe, screen, saved)
+            context, rect = await self._launch(spec, index, count, exe, screen, saved, attach)
         except Exception:
             if spec.fallback is None:
                 raise
@@ -339,11 +505,14 @@ class SessionManager:
                 message="Couldn't open your real profile directly, so FanOut is using a private copy of its logins.",
             )
             spec = spec.fallback
-            context, rect = await self._launch(spec, index, count, exe, screen, saved)
+            context, rect = await self._launch(spec, index, count, exe, screen, saved, attach)
         number = spec.number
         self._contexts[number] = context
         self._specs[number] = spec
-        context.on("close", lambda *_: self._on_closed(number))
+        if number in self._browsers:  # attached: the person closing the window ends the connection
+            self._browsers[number].on("disconnected", lambda *_: self._on_closed(number))
+        else:
+            context.on("close", lambda *_: self._on_closed(number))
         await context.add_init_script(banner_script(number))
         page = context.pages[0] if context.pages else await context.new_page()
         for existing in list(context.pages):
@@ -510,11 +679,15 @@ class SessionManager:
             watcher.cancel()
         await asyncio.gather(*self._watchers.values(), return_exceptions=True)
         self._watchers.clear()
-        contexts = list(self._contexts.values())
+        attached = list(self._procs)
+        ports = list(self._ports.values())
+        classic = [c for number, c in self._contexts.items() if number not in attached]
         self._contexts.clear()
-        await asyncio.gather(*(self._close_context(c) for c in contexts), return_exceptions=True)
+        await asyncio.gather(
+            *(self._close_context(c) for c in classic), *(self._stop_browser(n) for n in attached), return_exceptions=True
+        )
         private = [s.user_data_dir for s in self._specs.values() if s.temporary or sessions_dir() in s.user_data_dir.parents]
-        stopped = reap_orphans(private)  # first, so no browser still holds files in a temporary copy (Windows locks them)
+        stopped = reap_orphans(private, ports)  # first, so no browser still holds files in a temporary copy (Windows locks them)
         if stopped:
             log.warning("Stopped %d leftover browser process(es)", stopped)
         for spec in self._specs.values():
@@ -526,6 +699,48 @@ class SessionManager:
     @staticmethod
     async def _close_context(context: Any) -> None:
         await asyncio.wait_for(context.close(), timeout=10)
+
+    async def _stop_browser(self, number: int) -> None:
+        """Close a normally-started window the right way: ask it to quit (so it saves your login), then end it.
+
+        Closing the Playwright context does not quit a browser we merely attached to, so the order matters:
+        Browser.close first, then terminate, then kill as a last resort.
+        """
+        browser = self._browsers.pop(number, None)
+        proc = self._procs.pop(number, None)
+        self._ports.pop(number, None)
+        if browser is not None:
+            try:
+                if browser.is_connected():
+                    session = await browser.new_browser_cdp_session()
+                    await asyncio.wait_for(session.send("Browser.close"), timeout=8)
+            except Exception:
+                log.debug("Browser.close did not complete cleanly", exc_info=True)  # the browser may drop the link first
+        if proc is not None:
+            await self._stop_process(proc, grace=self.close_grace_seconds)
+
+    async def _stop_process(self, proc: Any, grace: float) -> None:
+        """Wait up to `grace` seconds for it to exit by itself, then terminate it, then kill it."""
+        if grace > 0 and proc.returncode is None:
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(proc.wait(), timeout=grace)
+        if proc.returncode is None:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.terminate()
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(proc.wait(), timeout=3)
+        if proc.returncode is None:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.kill()
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(proc.wait(), timeout=3)
+
+    @staticmethod
+    def _kill_quietly(proc: Any) -> None:
+        """Last resort when the task itself is being cancelled and can't wait for anything."""
+        if proc is not None and proc.returncode is None:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.kill()
 
     async def shutdown(self) -> dict[str, Any]:
         """Final snapshot, close everything, stop Playwright. Returns the snapshot."""

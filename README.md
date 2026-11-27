@@ -38,6 +38,8 @@ Desktop shortcut, checks and repairs itself on every start, and updates itself t
 2. Press **Continue**. FanOut opens one window per account, side by side, each with a coloured strip at the top:
    "ACCOUNT 1", "ACCOUNT 2", and so on. These windows belong to FanOut and are separate from your normal Brave.
 3. **Log in yourself** in each window, on whichever chat site you like (a different one in each is fine).
+   The windows open like an ordinary browser (see **Compatibility mode** below), so a site's own
+   "Verify you are human" step is something you tick by hand, once, in the window.
    FanOut never asks for or sees your password. Your login is remembered for next time.
 4. When a window shows **READY**, FanOut has found its chat box. If it can't, press **Map this account**, or
    **Fix by clicking** and click the chat box yourself. You never type any code.
@@ -63,6 +65,10 @@ Press **Settings** at the top right.
   changed for this long and the site's own Stop button is gone. Raise it for slow, stop-and-start sites.
 - **Give up on an account after** (default 180 seconds, up to 1800): one slow account never stops the others.
 - **Gap between two sends from one account**, and **Be gentle** (doubles that gap, at least 10 seconds).
+- **Compatibility mode: open windows as a normal browser** (on by default). FanOut starts each window as an ordinary browser
+  with its own profile folder, you log in by hand, and FanOut connects to it afterwards. This is what lets sites that ask you to
+  prove you are human let you in. If a window can't be opened this way, FanOut opens it the standard way and says so.
+  It applies the next time windows open. Windows that reuse your real Brave profiles always open the standard way.
 - **Check for updates**, **Repair installation**, **Open logs folder**, **Open results folder**.
 
 ## Updates
@@ -111,7 +117,7 @@ The log is `logs/fanout.log` in that folder (Settings has an **Open logs folder*
   automation on the default folder. FanOut then works on a private copy and tells you.
 - **"Appears to be running" is a guess.** FanOut looks at Brave's lock files and the list of open programs. It can be wrong, so the table says "appears".
 - **Sites change.** Chat sites redesign their pages. When that breaks a mapping, use **Map this account** again.
-- **No tricks.** FanOut doesn't hide that it is automated, doesn't solve CAPTCHAs, and doesn't get around rate limits. It slows down on purpose instead (Be gentle).
+- **No tricks.** FanOut doesn't fake or hide anything about the browser, doesn't solve CAPTCHAs, and doesn't get around rate limits. Compatibility mode only starts the window the ordinary way; you do any "Verify you are human" step yourself. A site can still challenge or block automated use. FanOut then stops that account and leaves it to you. It slows down on purpose instead (Be gentle).
 - **Not tested everywhere yet** (see Status above).
 
 ## Terms of service

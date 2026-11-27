@@ -33,6 +33,7 @@ class Config:
     stable_seconds: float = 3.0
     timeout_seconds: int = 180
     check_updates: bool = True
+    compatibility_mode: bool = True  # open windows as a normal browser, then attach after you log in by hand
     skipped_version: str = ""
     first_run_notice_dismissed: bool = False
     import_logins: bool = False

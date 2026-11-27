@@ -20,9 +20,18 @@ class FriendlyError:
         return f"{self.message}\n\nWhat to try: {self.fix}"
 
 
+class AttachError(RuntimeError):
+    """Compatibility mode could not start a window or connect to it. The message is for the log only."""
+
+
 def describe(exc: BaseException) -> FriendlyError:
     """Log the full traceback to fanout.log and return a friendly explanation."""
     log.error("Unhandled error", exc_info=(type(exc), exc, exc.__traceback__))
+    if isinstance(exc, AttachError):
+        return FriendlyError(
+            "The window didn't start in compatibility mode.",
+            "FanOut will use its standard mode instead. To stop trying, turn off Compatibility mode in Settings.",
+        )
     text = str(exc).lower()
     if "browser helper isn't running" in text:
         return FriendlyError(

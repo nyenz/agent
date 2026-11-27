@@ -180,7 +180,14 @@ def test_continue_opens_one_window_per_picked_profile(root: tk.Tk) -> None:
     assert [s.number for s in payload["specs"]] == [1, 2, 3]
     assert payload["exe"] == Path("/usr/bin/brave")
     assert payload["screen"][0] > 0
+    assert payload["attach"] is True, "compatibility mode is on by default"
     assert list(app.slot_vars) == [1, 2, 3]
+
+
+def test_turning_compatibility_mode_off_opens_windows_the_standard_way(root: tk.Tk) -> None:
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True, compatibility_mode=False), fake_scan(2))
+    app.continue_clicked()
+    assert app.worker.commands[-1][1]["attach"] is False  # type: ignore[union-attr]
 
 
 def test_bundled_chromium_means_no_executable(root: tk.Tk) -> None:

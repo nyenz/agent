@@ -36,6 +36,8 @@ It never contains passwords, cookies, prompts or answers. Attach it to a bug rep
 | FanOut says it couldn't start the browser | If you chose the built-in Chromium: Settings, **Repair installation**. If you use Brave: check it is installed. |
 | A window is left open after FanOut closes | Close it by hand. If it keeps happening, send `fanout.log`. |
 | A window never shows READY | Be on the chat page, logged in, then **Map this account** or **Fix by clicking**. |
+| A site keeps showing "Verify you are human" again and again | Check Settings: **Compatibility mode** should be ticked. Close the windows (**Close windows and go back**), open them again, tick the box in the window yourself, then log in. If you chose "Reuse my real Brave profiles", switch back to **App-managed windows**, because compatibility mode can't be used on a real profile. Some sites may still refuse; FanOut doesn't try to get around that. |
+| A note says the window "didn't start in compatibility mode" | FanOut opened it the standard way instead, so it still works. Close any stuck browser windows and try again; if it repeats, send `fanout.log`. |
 | Windows overlap or are off-screen | Close FanOut and start it again; it re-tiles windows to your screen. |
 
 ## Sending and answers

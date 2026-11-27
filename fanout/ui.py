@@ -660,6 +660,7 @@ class FanOutApp:
             screen=(self.root.winfo_screenwidth(), self.root.winfo_screenheight()),
             geometry=dict(self.cfg.window_geometry),
             last_urls=dict(self.cfg.last_urls),
+            attach=self.cfg.compatibility_mode,
         )
 
     # ----- login screen ---------------------------------------------------------------------

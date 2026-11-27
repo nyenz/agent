@@ -42,10 +42,14 @@ def parse_settings(stable: str, timeout: str, delay: str) -> tuple[SettingsValue
     return SettingsValues(s, int(round(t)), d), []
 
 
-def apply_settings(cfg: Config, values: SettingsValues, be_gentle: bool, check_updates: bool) -> None:
-    """Copy checked values into the config (the caller saves it)."""
+def apply_settings(
+    cfg: Config, values: SettingsValues, be_gentle: bool, check_updates: bool, compatibility_mode: bool | None = None
+) -> None:
+    """Copy checked values into the config (the caller saves it). `None` leaves compatibility mode as it is."""
     cfg.stable_seconds = values.stable_seconds
     cfg.timeout_seconds = values.timeout_seconds
     cfg.min_delay_seconds = values.min_delay_seconds
     cfg.be_gentle = be_gentle
     cfg.check_updates = check_updates
+    if compatibility_mode is not None:
+        cfg.compatibility_mode = compatibility_mode

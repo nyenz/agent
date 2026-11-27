@@ -56,6 +56,7 @@ class SettingsDialog:
         self.delay = tk.StringVar(value=f"{cfg.min_delay_seconds:g}")
         self.gentle = tk.BooleanVar(value=cfg.be_gentle)
         self.updates = tk.BooleanVar(value=cfg.check_updates)
+        self.compat = tk.BooleanVar(value=cfg.compatibility_mode)
         self.message = tk.StringVar()
 
         ttk.Label(body, text="How long to wait", font=("TkDefaultFont", 12, "bold")).grid(row=0, column=0, columnspan=3, sticky="w")
@@ -72,22 +73,34 @@ class SettingsDialog:
             body, text="Be gentle (doubles the gap, never less than 10 seconds)", variable=self.gentle
         ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
-        ttk.Separator(body).grid(row=5, column=0, columnspan=3, sticky="ew", pady=12)
-        ttk.Label(body, text=f"FanOut {__version__}", font=("TkDefaultFont", 12, "bold")).grid(row=6, column=0, columnspan=3, sticky="w")
+        ttk.Checkbutton(
+            body, text="Compatibility mode: open windows as a normal browser (recommended)", variable=self.compat
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ttk.Label(
+            body,
+            text="Helps with sites that ask you to prove you are human. You still log in yourself. "
+            "Takes effect the next time windows open. Turn it off only if windows won't open.",
+            foreground="#666666",
+            wraplength=480,
+            justify="left",
+        ).grid(row=6, column=0, columnspan=3, sticky="w")
+
+        ttk.Separator(body).grid(row=7, column=0, columnspan=3, sticky="ew", pady=12)
+        ttk.Label(body, text=f"FanOut {__version__}", font=("TkDefaultFont", 12, "bold")).grid(row=8, column=0, columnspan=3, sticky="w")
         ttk.Checkbutton(body, text="Look for updates when FanOut starts", variable=self.updates).grid(
-            row=7, column=0, columnspan=3, sticky="w", pady=(4, 0)
+            row=9, column=0, columnspan=3, sticky="w", pady=(4, 0)
         )
         buttons = ttk.Frame(body)
-        buttons.grid(row=8, column=0, columnspan=3, sticky="w", pady=8)
+        buttons.grid(row=10, column=0, columnspan=3, sticky="w", pady=8)
         ttk.Button(buttons, text="Check for updates", command=self.check_now).pack(side="left", padx=(0, 8))
         ttk.Button(buttons, text="Repair installation", command=self.repair).pack(side="left", padx=(0, 8))
         ttk.Button(buttons, text="Open logs folder", command=lambda: open_folder(log_dir())).pack(side="left", padx=(0, 8))
         ttk.Button(buttons, text="Open results folder", command=lambda: open_folder(app_data_dir() / "results")).pack(side="left")
 
         self.error = ttk.Label(body, textvariable=self.message, foreground="#b00020", wraplength=480, justify="left")
-        self.error.grid(row=9, column=0, columnspan=3, sticky="w")
+        self.error.grid(row=11, column=0, columnspan=3, sticky="w")
         bottom = ttk.Frame(body)
-        bottom.grid(row=10, column=0, columnspan=3, sticky="e", pady=(10, 0))
+        bottom.grid(row=12, column=0, columnspan=3, sticky="e", pady=(10, 0))
         ttk.Button(bottom, text="Save", command=self.save).pack(side="left", padx=(0, 8))
         ttk.Button(bottom, text="Close", command=self.close).pack(side="left")
 
@@ -108,7 +121,7 @@ class SettingsDialog:
         if values is None:
             self.message.set("\n".join(problems))
             return
-        apply_settings(self.app.cfg, values, self.gentle.get(), self.updates.get())
+        apply_settings(self.app.cfg, values, self.gentle.get(), self.updates.get(), self.compat.get())
         self.app.save(self.app.cfg)
         self.close()
 

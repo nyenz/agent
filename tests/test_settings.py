@@ -46,6 +46,20 @@ def test_apply_settings_updates_the_config_and_survives_a_reload() -> None:
 def test_old_config_files_still_load_with_the_new_fields() -> None:
     cfg = _clean({"num_accounts": 2})
     assert cfg.check_updates is True and cfg.skipped_version == ""
+    assert cfg.compatibility_mode is True, "compatibility mode is on unless the person turned it off"
+
+
+def test_compatibility_mode_can_be_switched_off_and_stays_off() -> None:
+    cfg = Config()
+    assert cfg.compatibility_mode is True
+    values, _ = parse_settings("3", "180", "5")
+    assert values is not None
+    apply_settings(cfg, values, be_gentle=False, check_updates=True, compatibility_mode=False)
+    assert cfg.compatibility_mode is False
+    assert _clean({"compatibility_mode": cfg.compatibility_mode}).compatibility_mode is False
+    assert _clean({"compatibility_mode": "yes"}).compatibility_mode is True, "a wrong-typed value is ignored"
+    apply_settings(cfg, values, be_gentle=False, check_updates=True)  # callers that don't mention it leave it alone
+    assert cfg.compatibility_mode is False
 
 
 def test_repair_runs_bootstrap_repair_without_launching(tmp_path: Path) -> None:
