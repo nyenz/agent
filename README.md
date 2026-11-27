@@ -6,29 +6,30 @@ same time, waits for every answer to finish, and shows the answers **side by sid
 
 You can copy any answer, copy them all, and save everything as a Markdown or JSON file.
 
-> **Status (honest):** version 0.2.0's automated tests pass on Windows, macOS and Linux (GitHub's test machines), and the
-> answer-waiting engine was run in a real Chrome against local pretend chat pages. It has **not yet been tried with real
-> Brave, on real chat sites, by `INSTALL.bat` on a clean PC with no Python, or as a packaged download.** If something
+> **Status (honest):** version 0.2.0's automated tests pass on Windows, macOS and Linux (GitHub's test machines). The Windows
+> installer was installed, opened, updated and uninstalled on GitHub's Windows machine. It has **not yet been tried with real
+> Brave or on real chat sites.** If something
 > doesn't work on your machine, please open an issue and attach `fanout.log` (see Troubleshooting).
 
 ## Install (Windows)
 
-1. Download FanOut: on this page press the green **Code** button, then **Download ZIP**.
-2. Open your **Downloads** folder, right-click the zip, choose **Extract All...**, then **Extract**.
-3. Open the new `agent-main` folder and **double-click `INSTALL.bat`**.
-4. If Windows shows a blue "Windows protected your PC" box, press **More info**, then **Run anyway**.
-5. A black window shows progress. The first time it can take a few minutes. It installs Python for you if you
-   don't have it. You don't type anything.
-6. When it finishes, a small message says "FanOut is installed" and FanOut opens. A **FanOut** shortcut is now on your Desktop.
+1. Open the **[Releases page](https://github.com/nyenz/agent/releases/latest)** and click **FanOut-Setup-x.y.z.exe** to download it.
+2. Open your **Downloads** folder and **double-click FanOut-Setup**.
+3. Windows may show a blue box, "Windows protected your PC". Press **More info**, then **Run anyway**.
+   (It appears because the installer isn't signed with a paid certificate. It is the same file GitHub built from this code.)
+4. Press **Install**. No admin password is needed and nothing else to download: the browser engine is inside.
+5. FanOut opens. A **FanOut** shortcut with its icon is on your Desktop and in the Start menu.
 
-Next time, double-click the **FanOut** shortcut on your Desktop (or `run.bat`).
+**Updates:** when a new version is out, FanOut shows a green bar. Press **Update now**. It downloads the new installer,
+checks its fingerprint, installs it by itself and opens FanOut again. You never download anything by hand.
 
-**Mac or Linux:** extract the zip, then double-click `install.command` (on Linux you may need to right-click it and
-choose "Run as a program", or run `./install.command` in a terminal). It asks before installing anything with your
-system's installer, and asks for your password only for that.
+**Uninstall:** Start menu, **Settings**, **Apps**, find **FanOut**, then **Uninstall**. Your settings, logins and results stay
+in `%APPDATA%\FanOut` in case you install again; delete that folder if you want them gone.
 
-You can run `INSTALL.bat` again at any time. It repairs a broken install and keeps your settings and results.
-Every time FanOut starts it also quietly checks that its packages are there and fixes them if not.
+**Mac or Linux:** on the Releases page, download **Source code (zip)**, extract it, then double-click `install.command`
+(on Linux you may need to right-click it and choose "Run as a program", or run `./install.command` in a terminal).
+It asks before installing anything with your system's installer, and asks for your password only for that. It makes a
+Desktop shortcut, checks and repairs itself on every start, and updates itself the same way (green bar, **Update now**).
 
 ## First run, step by step
 
@@ -81,7 +82,7 @@ program folder, so updates can't touch them. If you are offline, FanOut says not
 | A run says an account hit a CAPTCHA or a usage limit | FanOut stops that account and never tries to get around it. Solve it yourself in that window, then press **Retry failed**. |
 | An answer is cut short | Raise "Wait until an answer stops changing" in Settings. |
 | An account timed out | The other accounts are unaffected. Press **Retry failed**, or raise the timeout in Settings. A screenshot is saved next to `fanout.log`. |
-| Nothing opens / "Tkinter is missing" | Run `INSTALL.bat` (Windows) or `install.command` (Mac/Linux) again. |
+| Nothing opens | Windows: run **FanOut-Setup** again (it repairs and keeps your data). Mac/Linux: run `install.command` again. |
 | Anything else | **Settings, then Repair installation.** Still stuck? See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). |
 
 **Where things live.** Your settings, logins, results and logs are in FanOut's data folder, not in the program folder:
@@ -129,14 +130,17 @@ Check the terms of each site, keep your volume low, and prefer official APIs whe
 
 Developer-only extras (not installed for normal use): pytest, ruff, mypy, PyInstaller.
 
-## Packaged downloads and their size
+## Download size
 
-When the build succeeds, a release also carries a ready-to-run folder for Windows, Mac and Linux (built by GitHub, no Python needed).
-**These builds are new and unverified, and I have not measured their size.** They carry their own Chromium, so expect each one to
-be hundreds of megabytes, not a few. The folder (not a single file) starts faster. A packaged copy can't update
-itself in place: **Update now** opens the download page instead. The `INSTALL.bat` route is smaller and updates itself.
+The Windows installer is about **260 MB** and FanOut takes about **850 MB** once installed (measured on 2026-11-27, before a
+saving that should make both smaller). Almost all of it is the Chromium browser engine, carried inside so the app works with no
+other downloads. Mac and Linux download it once during `install.command` instead.
 
 ## For developers
+
+Run from source on Windows with `INSTALL.bat` (installs Python if needed, then the same steps as `install.command`).
+Build the installer with `pwsh packaging/build_windows.ps1` (needs Inno Setup 6); CI builds it, then installs, opens,
+updates and uninstalls it on every push (`packaging/test_windows_installer.ps1`).
 
 ```
 python -m pip install -r requirements-dev.txt

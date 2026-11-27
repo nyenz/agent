@@ -293,7 +293,7 @@ def install_all(
                 say("  Skipping system libraries (no sudo). If windows fail to open, install them by hand.")
             else:
                 run([*sudo, py, "-m", "playwright", "install-deps", "chromium"], quiet=quiet)
-        if run([py, "-m", "playwright", "install", "chromium"], quiet=quiet) != 0:
+        if run([py, "-m", "playwright", "install", "--no-shell", "chromium"], quiet=quiet) != 0:
             return False, "I couldn't download the built-in Chromium. Check your internet connection and run INSTALL again."
     else:
         step(6, "(Chromium is already up to date)", quiet)

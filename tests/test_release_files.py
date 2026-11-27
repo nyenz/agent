@@ -36,7 +36,7 @@ def test_release_uses_the_asset_names_the_updater_looks_for() -> None:
     text = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert f"{updater.SOURCE_PREFIX}${{GITHUB_REF_NAME}}.zip" in text
     assert f"{updater.SOURCE_PREFIX}${{GITHUB_REF_NAME}}.zip.sha256" in text
-    assert "PLAYWRIGHT_BROWSERS_PATH=0" in text and "python -m playwright install chromium" in text
+    assert "PLAYWRIGHT_BROWSERS_PATH=0" in text and "playwright install --no-shell chromium" in text
 
 
 def test_every_spec_builds_a_folder_not_a_single_file_and_carries_the_scripts() -> None:
@@ -55,7 +55,7 @@ def test_changelog_has_the_current_version_and_the_notes_script_finds_it() -> No
     changelog = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
     assert f"## [{__version__}]" in changelog
     section = notes.section(changelog, f"v{__version__}")
-    assert "Installers" in section and "Known limits" in section and "## [" not in section
+    assert "installer" in section.lower() and "Known limits" in section and "## [" not in section
     assert notes.section(changelog, "v99.0.0") == ""
 
 
@@ -77,10 +77,10 @@ def test_required_files_exist() -> None:
 def test_readme_covers_every_required_section_in_order() -> None:
     text = (REPO / "README.md").read_text(encoding="utf-8")
     order = ["## Install (Windows)", "## First run, step by step", "## Troubleshooting", "## Privacy", "## Limits you should know about",
-             "## Terms of service", "## Why each package is needed", "## Packaged downloads and their size", "## Licence"]
+             "## Terms of service", "## Why each package is needed", "## Download size", "## Licence"]
     positions = [text.index(h) for h in order]
     assert positions == sorted(positions)
-    assert "INSTALL.bat" in text and "Profile locks" in text and "appears" in text.lower()
+    assert "FanOut-Setup" in text and "Update now" in text and "Profile locks" in text and "appears" in text.lower()
     for package in re.findall(r"^(?:playwright|psutil|pyperclip)", (REPO / "requirements.txt").read_text(encoding="utf-8"), re.M):
         assert package.lower() in text.lower(), f"README must justify {package}"
 

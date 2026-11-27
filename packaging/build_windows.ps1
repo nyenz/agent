@@ -5,7 +5,7 @@ $version = (Select-String -Path fanout\__init__.py -Pattern '__version__ = "([^"
 Write-Host "Building FanOut $version"
 
 $env:PLAYWRIGHT_BROWSERS_PATH = "0"   # Chromium goes inside the playwright package, so the build carries it
-python -m playwright install chromium
+python -m playwright install --no-shell chromium   # FanOut only uses the full browser
 if ($LASTEXITCODE -ne 0) { throw "playwright install failed" }
 python -m PyInstaller --noconfirm packaging/windows.spec
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }

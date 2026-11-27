@@ -18,8 +18,10 @@ It never contains passwords, cookies, prompts or answers. Attach it to a bug rep
 
 | Problem | Fix |
 |---|---|
-| Windows says "Windows protected your PC" | Press **More info**, then **Run anyway**. It appears because the file isn't from a big publisher. |
-| The installer says it couldn't install Python | Install Python 3.12 from python.org. On the first screen tick **Add python.exe to PATH**. Then double-click `INSTALL.bat` again. |
+| Windows says "Windows protected your PC" | Press **More info**, then **Run anyway**. It appears because the installer isn't signed with a paid certificate. |
+| FanOut-Setup says FanOut is still running | Close FanOut (and its browser windows), then press **Retry**. |
+| You want to repair the Windows app | Run **FanOut-Setup** again. It reinstalls the program and keeps your settings, logins and results. |
+| (Mac/Linux or running from source) The installer says it couldn't install Python | Install Python 3.12 from python.org. On the first screen tick **Add python.exe to PATH**. Then double-click `INSTALL.bat` again. |
 | "Tkinter is missing" | Windows: reinstall Python from python.org and keep **tcl/tk** ticked. Mac: `brew install python-tk@3.12`. Linux: `sudo apt install python3-tk` (Fedora `python3-tkinter`, Arch `tk`). Then run the installer again. |
 | "I couldn't install FanOut's packages" | Check your internet, then run the installer again. Behind a work proxy, ask your IT team to allow `pypi.org`. |
 | "I couldn't download the built-in Chromium" | Check your internet and run the installer again. Some work networks block it. |

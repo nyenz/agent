@@ -44,7 +44,7 @@ def self_test() -> int:
         from playwright.async_api import async_playwright
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
+            browser = await pw.chromium.launch(headless=True, channel="chromium")  # the full browser FanOut uses, no extra shell
             try:
                 page = await browser.new_page()
                 await page.set_content("<p id=ok>ok</p>")
