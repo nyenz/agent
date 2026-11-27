@@ -60,10 +60,14 @@ jobs:
 
   publish:
     needs: build
+    # Publish even if one packaged build failed: the source zip + checksum (what in-app updates use) never depend on PyInstaller.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: mkdir -p assets
       - uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           path: assets
           merge-multiple: true
