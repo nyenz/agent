@@ -6,7 +6,7 @@ same time, waits for every answer to finish, and shows the answers **side by sid
 
 You can copy any answer, copy them all, and save everything as a Markdown or JSON file.
 
-> **Status (honest):** version 0.2.0's automated tests pass on Windows, macOS and Linux (GitHub's test machines). The Windows
+> **Status (honest):** version 0.2.1's automated tests pass on Windows, macOS and Linux (GitHub's test machines). The Windows
 > installer was installed, opened, updated and uninstalled on GitHub's Windows machine. It has **not yet been tried with real
 > Brave or on real chat sites.** If something
 > doesn't work on your machine, please open an issue and attach `fanout.log` (see Troubleshooting).

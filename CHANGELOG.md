@@ -2,7 +2,9 @@
 
 All notable changes. Newest first. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.2.1] - 2026-11-27
+
+Compatibility mode for sites that ask you to prove you are human.
 
 ### Added
 - **Compatibility mode** (Settings, on by default): each app-managed window now starts as an ordinary browser with its own profile folder and a control port on this computer only. You log in by hand, then FanOut connects to the running window and does everything it did before (banner, READY, mapping, sending, answers). This lets sites that ask you to prove you are human accept your login instead of looping the check. Nothing is faked or hidden, and FanOut still never solves a check for you.
@@ -10,6 +12,10 @@ All notable changes. Newest first. Format follows [Keep a Changelog](https://kee
 
 ### Changed
 - Closing now asks the browser to quit first (so your login is saved), then ends it, and clears up any leftover FanOut browser by its own port, never your own Brave.
+
+### Known limits
+- Compatibility mode opens, attaches to and closes a real Chrome correctly on GitHub's Windows, Mac and Linux machines. It has not yet been tried on a real chat site: a site can still refuse automated use, and FanOut will not try to get around that.
+- The Windows installer is built and tested on GitHub's Windows machine on every release. The Mac package failed to build for 0.2.0 (a code-signing error) and is not fixed yet.
 
 ## [0.2.0] - 2026-11-27
 
