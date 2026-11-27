@@ -6,8 +6,9 @@ same time, waits for every answer to finish, and shows the answers **side by sid
 
 You can copy any answer, copy them all, and save everything as a Markdown or JSON file.
 
-> **Status (honest):** version 0.2.0 is built and tested on Linux, in a real Chrome, against local pretend chat
-> pages. It has **not yet been tested on Windows, on a Mac, with real Brave, or on real chat sites.** If something
+> **Status (honest):** version 0.2.0's automated tests pass on Windows, macOS and Linux (GitHub's test machines), and the
+> answer-waiting engine was run in a real Chrome against local pretend chat pages. It has **not yet been tried with real
+> Brave, on real chat sites, by `INSTALL.bat` on a clean PC with no Python, or as a packaged download.** If something
 > doesn't work on your machine, please open an issue and attach `fanout.log` (see Troubleshooting).
 
 ## Install (Windows)
@@ -130,8 +131,8 @@ Developer-only extras (not installed for normal use): pytest, ruff, mypy, PyInst
 
 ## Packaged downloads and their size
 
-Each release also carries a ready-to-run folder for Windows, Mac and Linux (built by GitHub, no Python needed).
-**I have not built these yet, so I don't know their exact size.** They carry their own Chromium, so expect each one to
+When the build succeeds, a release also carries a ready-to-run folder for Windows, Mac and Linux (built by GitHub, no Python needed).
+**These builds are new and unverified, and I have not measured their size.** They carry their own Chromium, so expect each one to
 be hundreds of megabytes, not a few. The folder (not a single file) starts faster. A packaged copy can't update
 itself in place: **Update now** opens the download page instead. The `INSTALL.bat` route is smaller and updates itself.
 

@@ -1,20 +1,20 @@
 {
  "schema": 2,
- "updated_utc": "2026-11-27T06:07:30Z",
- "session_summary": "Stages 1 and 2 are on main (0d34a17, a1abcff) and Stage 3 (579c8ae); all three still need real-machine proof. Stage 4 built at the user's request while 1-3 wait: fanout/engine.py (typing and send fallbacks, ReplyWatcher, per-account delay, timeouts with screenshot, CAPTCHA/limit stop, cancel), fanout/results.py (Markdown, Copy All, .md/.json export, auto-save, searchable prompt history), fanout/runview.py (side-by-side results screen), js reply/stop helpers, worker 'send_all'. PROVEN here in real headless Chrome against LOCAL fake streaming chat sites through the Worker thread: 3 prompts run at once (overlapping timestamps), long streamed answer with a long pause captured complete, one account timing out leaves the others fine, CAPTCHA pauses only that account, results saved as account_N.md plus run.json, cancel presses Stop and leaves windows open, no orphan browser processes after cancel or shutdown. One real-run bug found and fixed: with nothing mapped and an empty chat, the reply reader returned the page's own script text (innerText of a hidden script is its code); it now skips script/style parts and looks for the reply area again after sending (regression test added, shown failing without the fix). pytest: 100 passed (non-UI). NOT proven: the Tk results screen and its buttons (no Tkinter here), real chat sites, real Brave, Windows/macOS.",
+ "updated_utc": "2026-11-27T11:34:52Z",
+ "session_summary": "All seven stages are now built. Stage 5: bootstrap.py + INSTALL.bat/run.bat/install.command/run.command (venv, pinned packages, Chromium, Tk check, Desktop shortcut, install_state.json, quiet repair on every launch), fanout/updater.py (GitHub Releases check, SHA-256, backup, swap, package refresh, automatic rollback; frozen builds open the download page), update banner and Settings dialog (timing, be gentle, updates, repair, open logs/results). Stage 6: pyproject (ruff, pytest), CI on Windows/macOS/Linux, PyInstaller folder specs, release workflow, issue template, README, LICENSE (MIT), CHANGELOG, docs/TROUBLESHOOTING.md, safety and no-traceback tests. Stage 7: nothing private is tracked; pushed to main; tag v0.2.0. PROVEN: ruff clean; 177 tests pass on ubuntu and macos, 176 + 1 skipped on windows, in GitHub Actions run 45990579939, which also ran the real Tk tests and `app.py --smoke-test` (first screen = brave-missing on all three). A real update ran offline in a real venv against a fake GitHub (swap, refresh, rollback). Real bugs found by CI and fixed: helper threads holding the Tk app (macOS abort), Tk objects freed on the wrong thread, Linux-only path assumptions in two Stage 1/2 tests (Windows). NOT proven: real Brave, real chat sites, INSTALL.bat/install.command on a clean machine, PyInstaller builds, the update banner and Settings dialog in a real window by eye, the macOS/Windows login-import and tiling with real screens.",
  "stages": {
   "0": "verified_done",
   "1": "in_progress",
   "2": "in_progress",
   "3": "in_progress",
   "4": "in_progress",
-  "5": "not_started",
-  "6": "not_started",
-  "7": "not_started"
+  "5": "in_progress",
+  "6": "in_progress",
+  "7": "in_progress"
  },
  "current_stage": 1,
- "last_verified_step": "python3 -m pytest -q --ignore=tests/test_ui.py -> 100 passed (26+1 engine tests incl. real Chrome); xvfb-run python /tmp/e2e4.py through the Worker thread with empty mappings -> 3 of 3 done via button/enter/ctrl_enter, answer ends with the real text, markdown has bold, saved account_1-3.md + run.json, cancel -> 3 cancelled with 16 partial words, 0 browser processes after shutdown",
- "next_action": "On the user's real Windows 11 machine, in order: (1) Stage 1: python app.py --list-profiles, compare with Local State. (2) Stage 2: pick 3 profiles, Continue, check 3 tiled windows with banners, log in, READY, restart keeps login. (3) Stage 3: with 2 different real chat sites logged in, 'Map this account' on each; if one fails use 'Fix by clicking'. (4) Stage 4: type 3 different prompts, press Send to all, check the answers fill in side by side, Copy All, and look in the results folder. Also run python -m pytest where Tkinter exists (tests/test_ui.py). Then mark 1-4 verified_done and start Stage 5.",
+ "last_verified_step": "GitHub Actions run 45990579939 on commit 06337e0: lint success; test ubuntu 177 passed, macos 177 passed, windows 176 passed + 1 skipped; `app.py --smoke-test` printed 'first screen = brave-missing' on all three. Local: python3 -m pytest --ignore=tests/test_ui.py all green, ruff check . clean.",
+ "next_action": "On your real Windows 11 machine with real Brave and 2 chat sites: (1) double-click INSTALL.bat, check it finishes and a FanOut shortcut appears. (2) Stage 1: python app.py --list-profiles vs Local State. (3) Stage 2: pick 3 profiles, Continue, 3 tiled windows with banners, log in, READY, restart keeps logins, Task Manager shows no Brave left after closing. (4) Stage 3: Map this account / Fix by clicking on 2 real sites. (5) Stage 4: 3 prompts, Send to all, answers fill in, Copy all, results folder. (6) Settings: Check for updates, Repair installation. Then mark stages 1-7 verified_done.",
  "files_touched": [
   ".gitignore",
   "app.py",
@@ -46,7 +46,38 @@
   "fanout/js/stop.js",
   "tests/browserkit.py",
   "tests/test_engine.py",
-  "tests/fixtures/stream_chat.html"
+  "tests/fixtures/stream_chat.html",
+  "bootstrap.py",
+  "INSTALL.bat",
+  "run.bat",
+  "install.command",
+  "run.command",
+  "requirements.txt",
+  "requirements-dev.txt",
+  "pyproject.toml",
+  ".gitattributes",
+  "fanout/updater.py",
+  "fanout/settings.py",
+  "fanout/settingsdialog.py",
+  ".github/workflows/ci.yml",
+  ".github/workflows/release.yml",
+  ".github/ISSUE_TEMPLATE/bug_report.md",
+  "packaging/_common.py",
+  "packaging/windows.spec",
+  "packaging/macos.spec",
+  "packaging/linux.spec",
+  "packaging/release_notes.py",
+  "README.md",
+  "LICENSE",
+  "CHANGELOG.md",
+  "docs/TROUBLESHOOTING.md",
+  "tests/test_bootstrap.py",
+  "tests/test_updater.py",
+  "tests/test_settings.py",
+  "tests/test_no_traceback.py",
+  "tests/test_safety.py",
+  "tests/test_release_files.py",
+  "tests/test_threads.py"
  ],
  "checklist": {
   "1": "UNTESTED",
@@ -64,12 +95,12 @@
   "13": "UNTESTED",
   "14": "UNTESTED",
   "15": "PASS",
-  "16": "UNTESTED",
-  "17": "UNTESTED",
+  "16": "PASS",
+  "17": "PASS",
   "18": "PASS",
   "19": "PASS",
-  "20": "UNTESTED",
-  "21": "UNTESTED"
+  "20": "PASS",
+  "21": "PASS"
  },
  "deviations_kept": [
   "Mapping scripts live in fanout/js/ (inside the package) so they ship with it; PyInstaller specs in Stage 6 must include them as data",
@@ -77,16 +108,20 @@
   "Send-button/reply selectors are detected after typing the test word, because many sites only show Send once there is text; the dry run never clicks it",
   "Stage 4 was built before Stages 1-3 are verified_done, at the user's request; Stage 1 stays the current stage",
   "Checklist items 7, 8, 9, 11, 12 are PASS on local fake chat sites in headless Chrome only; they still need one run on real chat sites with real Brave",
-  "Reply selector is looked for again after sending when none is saved, because the reply area often does not exist before the first reply"
+  "Reply selector is looked for again after sending when none is saved, because the reply area often does not exist before the first reply",
+  "Stages 5, 6 and 7 were built before Stages 1-3 were proven on a real machine, at the user's request ('Finish all stages'); every stage stays in_progress until real-machine proof",
+  "bootstrap.py is at the repo root and uses only the standard library, so INSTALL.bat can run it before the venv exists",
+  "ruff line length is 140 (existing code was written to ~120-130), rules E,F,I,B,UP,SIM,RUF100",
+  "The Release is published by the release workflow (GITHUB_TOKEN); the local gh token is invalid, so repo description and topics are set through the REST API",
+  "A release publishes its source zip + SHA-256 even if a packaged build fails, because in-app updates depend only on those two files"
  ],
  "blockers": [
-  "Sandbox cannot run a real Brave or the user's logged-in sites: Stage 1/2/3 exit proofs must be run on the user's machine",
-  "No Tkinter in this sandbox: tests/test_ui.py and the new login-screen buttons/FixDialog were type-checked only (mypy), not run",
-  "Windows 11 and macOS runs are UNTESTED (sandbox is Linux)",
-  "Mode B risk: newer Chromium-based browsers may refuse automation on the default user data folder; code falls back to a private copy, unverified with real Brave",
-  "No Tkinter here: the results screen (fanout/runview.py) and its hooks in ui.py were type-checked and smoke-tested with a stand-in only; items 10 (Compare view, Copy All on screen) and 13 (no leftover browsers when the real app closes) stay UNTESTED",
-  "Sandbox quirk: finished Chrome children can linger as zombies under the sandbox init; tests ignore zombies and wait up to 5 s"
+  "Real Brave, real chat sites and a real Windows 11 desktop are needed for the Stage 1, 2, 3 exit proofs; the sandbox has none",
+  "INSTALL.bat on a clean Windows PC with no Python is UNTESTED (manual steps are in the README); install.command on a clean Mac/Linux is UNTESTED",
+  "PyInstaller packaged builds are unverified (not run locally; built only if the release workflow succeeds); size not measured",
+  "Update banner, Settings dialog and results screen appearance have never been looked at in a real window by a person (tests drive them, nobody has seen them)",
+  "Mode B (reuse real Brave profiles) risk: newer Chromium may refuse automation on the default user data folder; unverified with real Brave"
  ],
- "last_commit": "b921078",
+ "last_commit": "PENDING",
  "safety_baseline": "Tracked files are code, tests, .gitignore and FANOUT_STATE.json only. .gitignore excludes sessions/ browser_profile/ config.json results/ logs/ .venv/ install_state.json .backup/ dist/ build/. App data (config, sessions, logs) lives in the per-user app data folder, outside the repo. Login import copies only Network/Cookies(+journal), Preferences and Local State."
 }

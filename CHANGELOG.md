@@ -18,5 +18,6 @@ First published version.
 - Tests, lint (ruff), CI on Windows/macOS/Linux, PyInstaller specs and a release workflow.
 
 ### Known limits
-- Tested on Linux with local pretend chat pages only. Not yet tested on Windows, macOS, real Brave or real chat sites.
-- The installers and packaged builds have not been run on a clean machine yet.
+- Automated tests (including window tests and a start-up check) pass on Windows, macOS and Linux CI machines. The waiting-for-answers engine was run in a real Chrome against local pretend chat pages.
+- Not yet tried with real Brave or real chat sites.
+- The installers have not been run on a clean computer with no Python, and the packaged (PyInstaller) builds are unverified; their size is not measured.
