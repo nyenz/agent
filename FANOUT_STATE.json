@@ -132,6 +132,6 @@
   "Mode B (reuse real Brave profiles) risk: newer Chromium may refuse automation on the default user data folder; unverified with real Brave",
   "The installer is not code-signed (signing needs a paid certificate), so Windows SmartScreen shows 'More info > Run anyway' on first install"
  ],
- "last_commit": "eb6c19c",
+ "last_commit": "ebbd836",
  "safety_baseline": "Tracked files are code, tests, .gitignore and FANOUT_STATE.json only. .gitignore excludes sessions/ browser_profile/ config.json results/ logs/ .venv/ install_state.json .backup/ dist/ build/. App data (config, sessions, logs) lives in the per-user app data folder, outside the repo. Login import copies only Network/Cookies(+journal), Preferences and Local State."
 }
