@@ -78,7 +78,13 @@ jobs:
           sha256sum "FanOut-source-${GITHUB_REF_NAME}.zip" > "FanOut-source-${GITHUB_REF_NAME}.zip.sha256"
       - name: Notes from CHANGELOG.md
         run: python packaging/release_notes.py "${GITHUB_REF_NAME}" > notes.md
-      - name: Create the Release
+      - name: Create the Release (or fill it in, if it was started by hand on GitHub's Releases page)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" assets/* --title "FanOut ${GITHUB_REF_NAME}" --notes-file notes.md
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" assets/* --clobber
+            gh release edit "${GITHUB_REF_NAME}" --title "FanOut ${GITHUB_REF_NAME}" --notes-file notes.md
+          else
+            gh release create "${GITHUB_REF_NAME}" assets/* --title "FanOut ${GITHUB_REF_NAME}" --notes-file notes.md
+          fi
