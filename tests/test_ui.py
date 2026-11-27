@@ -35,26 +35,44 @@ def fake_scan(count: int, exe: bool = True) -> ScanResult:
     return ScanResult(roots=[Path("/x")], profiles=profiles, exe=Path("/usr/bin/brave") if exe else None)
 
 
-@pytest.fixture(scope="module")
-def shared_root() -> tk.Tk:
-    """One Tk root for the whole file: making and destroying many roots in one process crashes Tk on macOS."""
+_ROOTS: list[tk.Tk] = []
+
+
+def _alive(window: tk.Tk) -> bool:
     try:
-        window = tk.Tk()
+        return bool(window.winfo_exists())
     except tk.TclError:
-        pytest.skip("no display available")
-    yield window
-    window.destroy()
+        return False
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _close_shared_root_at_the_end() -> None:
+    yield
+    for window in _ROOTS:
+        if _alive(window):
+            window.destroy()
+    _ROOTS.clear()
 
 
 @pytest.fixture
-def root(shared_root: tk.Tk) -> tk.Tk:
-    """The shared root, emptied after each test (timers cancelled, widgets destroyed)."""
-    yield shared_root
-    for job in shared_root.tk.splitlist(shared_root.tk.call("after", "info")):
-        shared_root.after_cancel(job)
-    for child in shared_root.winfo_children():
-        child.destroy()
-    shared_root.update_idletasks()
+def root() -> tk.Tk:
+    """One Tk root shared by the tests in this file (making and destroying many in one process crashes Tk on macOS).
+
+    A test that closes the whole app destroys it, so a new one is made only then. It is emptied after each test.
+    """
+    if not _ROOTS or not _alive(_ROOTS[-1]):
+        try:
+            _ROOTS.append(tk.Tk())
+        except tk.TclError:
+            pytest.skip("no display available")
+    window = _ROOTS[-1]
+    yield window
+    if _alive(window):
+        for job in window.tk.splitlist(window.tk.call("after", "info")):
+            window.after_cancel(job)
+        for child in window.winfo_children():
+            child.destroy()
+        window.update_idletasks()
     gc.collect()
 
 
