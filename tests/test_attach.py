@@ -726,12 +726,26 @@ def test_the_readiness_probe_talks_to_a_local_server_and_ignores_proxies(monkeyp
 # ----- a real browser ------------------------------------------------------------------------
 
 
+def _find_real_browser() -> str | None:
+    """Chrome, Chromium or Edge: on PATH, or in the usual Windows and Mac install folders (CI machines have them)."""
+    from browserkit import find_browser
+
+    found = find_browser()
+    if found:
+        return found
+    usual = (
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    )
+    return next((path for path in usual if Path(path).is_file()), None)
+
+
 def test_a_real_browser_opens_normally_attaches_and_closes_cleanly(tmp_path: Path) -> None:
     pytest.importorskip("playwright")
     pytest.importorskip("psutil")
-    from browserkit import find_browser
-
-    exe = find_browser()
+    exe = _find_real_browser()
     if exe is None:
         pytest.skip("no Chrome/Chromium on this computer")
     extra = ["--headless=new", "--disable-gpu"]  # tests only: no screen needed in CI
