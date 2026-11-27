@@ -108,7 +108,7 @@ class _Markdown(HTMLParser):
         self.out = self.stack.pop()
         return inner
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:  # noqa: C901 - one branch per tag
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = dict(attrs)
         if tag in SKIPPED_TAGS:
             self.skip += 1
@@ -168,7 +168,7 @@ class _Markdown(HTMLParser):
             self.header_row = self.header_row or tag == "th"
             self.push()
 
-    def handle_endtag(self, tag: str) -> None:  # noqa: C901 - one branch per tag
+    def handle_endtag(self, tag: str) -> None:
         if tag in SKIPPED_TAGS:
             self.skip = max(0, self.skip - 1)
         elif self.skip:

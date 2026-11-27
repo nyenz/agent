@@ -98,7 +98,7 @@ def test_friendly_errors_never_contain_traceback() -> None:
     for exc in (PermissionError("x"), FileNotFoundError("y"), OSError("z"), RuntimeError("boom")):
         try:
             raise exc
-        except Exception as caught:  # noqa: BLE001 - the test feeds describe() every kind of error
+        except Exception as caught:
             text = errors.describe(caught).text()
         assert "Traceback" not in text and "boom" not in text
         assert "What to try:" in text

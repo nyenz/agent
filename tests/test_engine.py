@@ -221,7 +221,9 @@ def scripted(monkeypatch: pytest.MonkeyPatch, replies: list[dict[str, Any]], typ
 QUICK = RunSettings(stable_seconds=0.3, timeout_seconds=1.0, min_delay_seconds=0, poll_seconds=0.05, send_check_seconds=0)
 
 
-def run_job(page: FakePage, settings: RunSettings = QUICK, shots: Path | None = None) -> tuple[AccountResult, list[tuple[str, dict[str, Any]]]]:
+def run_job(
+    page: FakePage, settings: RunSettings = QUICK, shots: Path | None = None
+) -> tuple[AccountResult, list[tuple[str, dict[str, Any]]]]:
     events: list[tuple[str, dict[str, Any]]] = []
     sink: dict[int, AccountResult] = {}
     job = Job(1, "my prompt", MAPPING_A, "chat.example")
@@ -362,7 +364,9 @@ def test_three_prompts_run_at_the_same_time_and_are_saved(tmp_path: Path) -> Non
     assert events[0][0] == "run_started" and events[-1][0] == "run_finished" and events[-1][1]["done"] == 3
     folder = Path(events[-1][1]["folder"])
     assert {p.name for p in folder.iterdir()} == {"account_1.md", "account_2.md", "account_3.md", "run.json"}
-    print(f"\nOVERLAP: starts {[round(r.started_at % 1000, 2) for r in results]} ends {[round(r.finished_at % 1000, 2) for r in results]} span {span:.2f}s total {total:.2f}s")
+    starts = [round(r.started_at % 1000, 2) for r in results]
+    ends = [round(r.finished_at % 1000, 2) for r in results]
+    print(f"\nOVERLAP: starts {starts} ends {ends} span {span:.2f}s total {total:.2f}s")
 
 
 def test_a_long_answer_with_a_long_pause_is_captured_complete() -> None:
@@ -481,7 +485,8 @@ def test_session_manager_send_all_end_to_end(tmp_path: Path, monkeypatch: pytest
             await page.goto(f"http://chat.test/?layout=a&chunks=3&first=100&interval=80&n={n}")
             manager._contexts[n] = SimpleNamespace(pages=[page])  # type: ignore[assignment]
         jobs = [{"slot": n, "prompt": f"hello {n}", "mapping": MAPPING_A.to_dict(), "site": "chat.test"} for n in (1, 2, 3)]
-        await manager.send_all(jobs, {"stable_seconds": 1.0, "timeout_seconds": 20, "min_delay_seconds": 0, "poll_seconds": 0.1, "send_check_seconds": 0.3})
+        quick = {"stable_seconds": 1.0, "timeout_seconds": 20, "min_delay_seconds": 0, "poll_seconds": 0.1, "send_check_seconds": 0.3}
+        await manager.send_all(jobs, quick)
 
     run_with_browser(scenario)
     results = {d["slot"]: d for k, d in events if k == "run_result"}

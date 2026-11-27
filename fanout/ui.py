@@ -18,13 +18,14 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any
 
-from . import __version__
+from . import __version__, updater
 from .brave import DOWNLOAD_URL, BraveProfile, ScanResult, running_brave_cmdlines, scan
 from .config import MAX_ACCOUNTS, Config
 from .errors import FriendlyError, describe
 from .mapping import Mapping, find_by_host, store_mapping
 from .runview import RunView
 from .sessions import SlotSpec, account_color, app_managed_specs, plan_reuse_profiles
+from .settingsdialog import SettingsDialog
 from .worker import Worker
 
 log = logging.getLogger(__name__)
@@ -95,6 +96,10 @@ class FanOutApp:
         self.pending_profiles: list[BraveProfile] = []
         self.temp_dir: Path | None = None
         self.after_windows_closed: Callable[[], None] | None = None
+        self.update_info: updater.ReleaseInfo | None = None
+        self.update_bar: tk.Frame | None = None
+        self.settings_dialog: SettingsDialog | None = None
+        self.working_on_update = False
 
         root.title(f"FanOut {__version__}")
         root.geometry("940x600")
@@ -104,10 +109,16 @@ class FanOutApp:
 
         self.notice_holder = ttk.Frame(root)
         self.notice_holder.pack(fill="x")
+        strip = ttk.Frame(root)
+        strip.pack(fill="x", padx=12, pady=(6, 0))
+        ttk.Button(strip, text="Settings", command=self.open_settings).pack(side="right")
+        self.update_holder = ttk.Frame(root)
+        self.update_holder.pack(fill="x")
         self.body = ttk.Frame(root, padding=16)
         self.body.pack(fill="both", expand=True)
         self._build_notice()
         self.start_scan()
+        self.start_update_check()
         self._pump_job = root.after(PUMP_MS, self.pump)
 
     # ----- plumbing -------------------------------------------------------------------------
@@ -121,6 +132,8 @@ class FanOutApp:
                     self.on_scan(payload)
                 elif kind == "scan_error":
                     self.show_problem(describe(payload))
+                elif kind in ("update_checked", "update_progress", "update_done", "repair_done"):
+                    self.on_update_event(kind, payload)
                 else:
                     self.on_worker_event(kind, payload)
         except queue.Empty:
@@ -177,6 +190,136 @@ class FanOutApp:
 
         ttk.Button(bar, text="Dismiss", command=dismiss).pack(side="right")
 
+    # ----- settings, updates, repair ---------------------------------------------------------
+
+    def is_busy(self) -> bool:
+        """True while browser windows are open (a run may be going). Updates and repairs wait for this to end."""
+        return self.worker is not None
+
+    def open_settings(self) -> None:
+        if self.settings_dialog is not None and self.settings_dialog.exists():
+            self.settings_dialog.lift()
+            return
+        self.settings_dialog = SettingsDialog(self)
+
+    def start_update_check(self, manual: bool = False) -> None:
+        """Ask GitHub on a helper thread. Silent when offline, unless the user pressed the button."""
+        if not manual and not self.cfg.check_updates:
+            return
+
+        def work() -> None:
+            info = updater.check_for_update(__version__, "" if manual else self.cfg.skipped_version)
+            self.events.put(("update_checked", (info, manual)))
+
+        threading.Thread(target=work, name="fanout-update-check", daemon=True).start()
+
+    def on_update_event(self, kind: str, payload: Any) -> None:
+        if kind == "update_checked":
+            info, manual = payload
+            if info is not None:
+                self.show_update_banner(info)
+            elif manual:
+                messagebox.showinfo("FanOut", f"You have the newest version ({__version__}), or I couldn't reach GitHub just now.")
+        elif kind == "update_progress":
+            self._set_update_text(str(payload))
+        elif kind == "update_done":
+            self.working_on_update = False
+            new_version, problem = payload
+            if problem:
+                messagebox.showerror("FanOut update", problem)
+                if self.update_info is not None:
+                    self.show_update_banner(self.update_info)
+                return
+            messagebox.showinfo("FanOut update", f"FanOut {new_version} is installed. It will restart now.")
+            updater.restart()
+            self.close()
+        elif kind == "repair_done":
+            self.working_on_update = False
+            ok, tail = payload
+            if ok:
+                messagebox.showinfo("FanOut", "Repair finished. Everything FanOut needs is in place.")
+            else:
+                messagebox.showerror("FanOut", f"The repair didn't finish.\n\n{tail}\n\nCheck your internet connection and try again.")
+
+    def hide_update_banner(self) -> None:
+        if self.update_bar is not None:
+            self.update_bar.destroy()
+            self.update_bar = None
+
+    def show_update_banner(self, info: updater.ReleaseInfo) -> None:
+        """Non-blocking bar: Update now / Later / Skip this version."""
+        self.update_info = info
+        self.hide_update_banner()
+        bar = tk.Frame(self.update_holder, bg="#d9f2e0", padx=12, pady=8)
+        bar.pack(fill="x")
+        self.update_bar = bar
+        self.update_text = tk.StringVar(value=f"FanOut {info.tag.lstrip('v')} is available (you have {__version__}).")
+        tk.Label(bar, textvariable=self.update_text, bg="#d9f2e0").pack(side="left")
+        row = tk.Frame(bar, bg="#d9f2e0")
+        row.pack(side="right")
+        ttk.Button(row, text="Update now", command=self.update_now).pack(side="left", padx=4)
+        ttk.Button(row, text="Later", command=self.hide_update_banner).pack(side="left", padx=4)
+        ttk.Button(row, text="Skip this version", command=self.skip_update).pack(side="left", padx=4)
+
+    def _set_update_text(self, text: str) -> None:
+        if self.update_bar is not None:
+            self.update_text.set(text)
+
+    def skip_update(self) -> None:
+        if self.update_info is not None:
+            self.cfg.skipped_version = self.update_info.tag.lstrip("v")
+            self.save(self.cfg)
+        self.hide_update_banner()
+
+    def update_now(self) -> None:
+        """Download, verify and install. Never while browser windows are open or another job is running."""
+        info = self.update_info
+        if info is None or self.working_on_update:
+            return
+        if updater.is_frozen():
+            webbrowser.open(info.page_url)  # a packaged app can't swap its own files: send them to the download
+            return
+        if self.is_busy():
+            messagebox.showinfo(
+                "FanOut", "Please finish or cancel the current run and close the browser windows first. Then press Update now again."
+            )
+            return
+        if not messagebox.askyesno(
+            "Update FanOut", f"Install FanOut {info.tag.lstrip('v')} now? Your settings, logins and results are kept. FanOut will restart."
+        ):
+            return
+        self.working_on_update = True
+        self._set_update_text("Starting the update...")
+
+        def work() -> None:
+            try:
+                new = updater.perform_update(info, progress=lambda t: self.events.put(("update_progress", t)))
+                self.events.put(("update_done", (new, "")))
+            except updater.UpdateError as exc:
+                self.events.put(("update_done", ("", str(exc))))
+            except Exception as exc:
+                self.events.put(("update_done", ("", describe(exc).text())))
+
+        threading.Thread(target=work, name="fanout-update", daemon=True).start()
+
+    def repair_installation(self) -> None:
+        """Rebuild anything missing (packages, built-in browser). Settings and results are untouched."""
+        if updater.is_frozen():
+            messagebox.showinfo("FanOut", "This packaged version can't repair itself. Download it again from the FanOut Releases page.")
+            return
+        if self.is_busy() or self.working_on_update:
+            messagebox.showinfo("FanOut", "Please finish or cancel the current run and close the browser windows first, then try again.")
+            return
+        question = "Check and rebuild FanOut's packages and built-in browser? This can take a few minutes."
+        if not messagebox.askyesno("Repair FanOut", question):
+            return
+        self.working_on_update = True
+
+        def work() -> None:
+            self.events.put(("repair_done", updater.repair_installation()))
+
+        threading.Thread(target=work, name="fanout-repair", daemon=True).start()
+
     # ----- scanning -------------------------------------------------------------------------
 
     def start_scan(self) -> None:
@@ -186,7 +329,7 @@ class FanOutApp:
         def work() -> None:
             try:
                 self.events.put(("scan", self.scan_fn()))
-            except Exception as exc:  # noqa: BLE001 - any failure must reach the UI via the queue
+            except Exception as exc:
                 self.events.put(("scan_error", exc))
 
         threading.Thread(target=work, name="fanout-scan", daemon=True).start()

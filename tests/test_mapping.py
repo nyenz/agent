@@ -12,9 +12,10 @@ from types import SimpleNamespace
 from typing import Any
 
 from browserkit import run_in_browser
+
 from fanout.config import Config, clean_mappings, load_config, save_config
 from fanout.mapping import Mapping, build_script, get_mapping, load_js, map_account, pick, store_mapping
-from fanout.sessions import SessionManager, banner_script
+from fanout.sessions import SessionManager
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SITE_A = (FIXTURES / "chat_site_a.html").as_uri()

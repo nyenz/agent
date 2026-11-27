@@ -150,7 +150,7 @@ async def read_reply(page: Any, message_selector: str) -> dict[str, Any]:
     for _ in range(5):
         try:
             return dict(await page.evaluate(script))
-        except Exception as exc:  # noqa: BLE001 - usually the page is changing
+        except Exception as exc:
             if page.is_closed():
                 raise RunProblem("This window was closed.", "Open the windows again from the Scan screen.") from exc
             await asyncio.sleep(0.2)
@@ -172,7 +172,7 @@ async def press_send(page: Any, locator: Any, mapping: Mapping, method: str) -> 
         await locator.focus()
         await page.keyboard.press(SEND_KEYS[method])
         return True
-    except Exception:  # noqa: BLE001 - this way didn't work, try the next
+    except Exception:
         log.debug("Sending with %s failed", method, exc_info=True)
         return False
 
@@ -190,7 +190,7 @@ async def send_message(page: Any, locator: Any, mapping: Mapping, prompt: str, r
         await asyncio.sleep(check_seconds)
         try:
             still_there = probe in " ".join((await read_box(locator)).split())
-        except Exception:  # noqa: BLE001 - the page moved on, so it was sent
+        except Exception:
             still_there = False
         if not still_there:
             return method
@@ -215,7 +215,7 @@ async def screenshot(page: Any, folder: Path | None, slot: int, state: str) -> N
         path = folder / f"account{slot}-{state}-{time.strftime('%Y%m%d-%H%M%S')}.png"
         await page.screenshot(path=str(path), timeout=5000)
         log.info("Saved a screenshot of account %s (%s): %s", slot, state, path.name)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.debug("Could not take a screenshot", exc_info=True)
 
 
@@ -317,7 +317,7 @@ async def run_one(
     except RunProblem as exc:
         await screenshot(page, shots, job.slot, "error")
         return finish("error", text=partial, message=exc.message, fix=exc.fix)
-    except Exception as exc:  # noqa: BLE001 - becomes a plain message; the traceback goes to the log only
+    except Exception as exc:
         friendly = describe(exc)
         await screenshot(page, shots, job.slot, "error")
         return finish("error", text=partial, message=f"ACCOUNT {job.slot}: {friendly.message}", fix=friendly.fix)

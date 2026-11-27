@@ -105,7 +105,7 @@ class Worker:
                 log.warning("Ignoring unknown command %r", command)
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001 - every failure becomes a friendly message for the GUI
+        except Exception as exc:
             friendly = describe(exc)
             self.emit("worker_error", message=friendly.message, fix=friendly.fix)
 

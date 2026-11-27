@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit
 
-from . import engine, mapping as mapping_tools
+from . import engine
+from . import mapping as mapping_tools
 from .brave import BraveProfile, running_brave_processes
 from .config import app_data_dir
 from .errors import describe
@@ -192,7 +193,7 @@ def _is_ours(proc: Any, me: Any) -> bool:
     """True if proc is a descendant of this program (so it is one of our own browsers)."""
     try:
         return me.pid in {p.pid for p in proc.parents()}
-    except Exception:  # noqa: BLE001 - psutil raises several error types for vanished processes
+    except Exception:
         return False
 
 
@@ -357,7 +358,7 @@ class SessionManager:
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
                 return
-            except Exception:  # noqa: BLE001 - a page that is mid-navigation or closed is simply skipped
+            except Exception:
                 log.info("Could not reopen %s; showing the start page", url)
         await self._try(page.goto(fallback_url))
 
@@ -390,7 +391,7 @@ class SessionManager:
                     if await page.evaluate(READY_JS):
                         ready, host = True, here or host
                         break
-                except Exception:  # noqa: BLE001, S112 - skip a window that is closing
+                except Exception:
                     continue
             if (ready, host) != last:
                 last = (ready, host)
@@ -490,7 +491,7 @@ class SessionManager:
                         await session.detach()
                     geometry[str(number)] = [bounds["left"], bounds["top"], bounds["width"], bounds["height"]]
                     break
-                except Exception:  # noqa: BLE001, S112 - skip a window that is closing
+                except Exception:
                     continue
         return {"window_geometry": geometry, "last_urls": urls}
 
@@ -521,7 +522,7 @@ class SessionManager:
         """Final snapshot, close everything, stop Playwright. Returns the snapshot."""
         try:
             final = await self.snapshot()
-        except Exception:  # noqa: BLE001 - already stopped
+        except Exception:
             final = {}
         await self.close_all()
         if self._pw is not None:

@@ -45,7 +45,7 @@ def copy_to_clipboard(root: tk.Misc, text: str) -> None:
         import pyperclip
 
         pyperclip.copy(text)
-    except Exception:  # noqa: BLE001 - pyperclip is optional (and can fail on bare Linux)
+    except Exception:
         root.clipboard_clear()
         root.clipboard_append(text)
         root.update()

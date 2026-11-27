@@ -39,7 +39,7 @@ def run_with_browser(scenario: Callable[[Any], Awaitable[Any]]) -> Any:
                 options["args"] = ["--no-sandbox"]  # test-only: some CI containers run as root
             try:
                 browser = await pw.chromium.launch(**options)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 pytest.skip(f"no browser available for tests: {type(exc).__name__}")
             try:
                 return await scenario(browser)

@@ -136,7 +136,7 @@ async def type_text(page: Any, locator: Any, text: str) -> str:
                 await locator.press_sequentially(text, delay=20)
             if text in await read_box(locator):
                 return method
-        except Exception:  # noqa: BLE001 - try the next way
+        except Exception:
             log.debug("Typing with %s failed", method, exc_info=True)
     return ""
 
@@ -167,14 +167,14 @@ async def map_account(page: Any, number: int, mapping: Mapping | None = None) ->
         if not final.message_selector:
             notes.append("The reply area will be found after the first answer.")
         return MapResult(True, f"{label} mapped", "", final, notes)
-    except Exception as exc:  # noqa: BLE001 - becomes a friendly message
+    except Exception as exc:
         friendly = describe(exc)
         return MapResult(False, f"{label}: {friendly.message}", friendly.fix)
     finally:
         if locator is not None:
             try:
                 await clear_box(page, locator)
-            except Exception:  # noqa: BLE001 - best effort; the page may have closed
+            except Exception:
                 log.debug("Could not clear the test text", exc_info=True)
 
 
@@ -198,7 +198,7 @@ async def pick(page: Any, kind: str, timeout: float = 120.0, poll: float = 0.3) 
                 if not armed:
                     await page.evaluate(script)  # first time, and again after every navigation
                     armed = True
-            except Exception:  # noqa: BLE001 - the page is loading or closing
+            except Exception:
                 armed = False
                 if page.is_closed():
                     break
@@ -207,5 +207,5 @@ async def pick(page: Any, kind: str, timeout: float = 120.0, poll: float = 0.3) 
     finally:
         try:
             await page.evaluate(STOP_PICK_JS)
-        except Exception:  # noqa: BLE001 - best effort
+        except Exception:
             log.debug("Could not leave pick mode", exc_info=True)

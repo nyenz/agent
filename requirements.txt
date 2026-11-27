@@ -1,0 +1,4 @@
+# Pinned runtime dependencies. Every one is explained in README.md ("Why each dependency").
+playwright==1.63.0
+psutil==7.2.2
+pyperclip==1.9.0

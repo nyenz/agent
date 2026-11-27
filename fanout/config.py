@@ -32,6 +32,8 @@ class Config:
     be_gentle: bool = False
     stable_seconds: float = 3.0
     timeout_seconds: int = 180
+    check_updates: bool = True
+    skipped_version: str = ""
     first_run_notice_dismissed: bool = False
     import_logins: bool = False
     window_geometry: dict[str, list[int]] = field(default_factory=dict)  # "1" -> [x, y, w, h]
