@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import time
 from pathlib import Path
 from typing import Any
@@ -34,14 +35,27 @@ def fake_scan(count: int, exe: bool = True) -> ScanResult:
     return ScanResult(roots=[Path("/x")], profiles=profiles, exe=Path("/usr/bin/brave") if exe else None)
 
 
-@pytest.fixture
-def root() -> tk.Tk:
+@pytest.fixture(scope="module")
+def shared_root() -> tk.Tk:
+    """One Tk root for the whole file: making and destroying many roots in one process crashes Tk on macOS."""
     try:
         window = tk.Tk()
     except tk.TclError:
         pytest.skip("no display available")
     yield window
     window.destroy()
+
+
+@pytest.fixture
+def root(shared_root: tk.Tk) -> tk.Tk:
+    """The shared root, emptied after each test (timers cancelled, widgets destroyed)."""
+    yield shared_root
+    for job in shared_root.tk.splitlist(shared_root.tk.call("after", "info")):
+        shared_root.after_cancel(job)
+    for child in shared_root.winfo_children():
+        child.destroy()
+    shared_root.update_idletasks()
+    gc.collect()
 
 
 def open_app(root: tk.Tk, cfg: Config, result: ScanResult, saved: list[Config]) -> FanOutApp:
