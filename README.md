@@ -132,8 +132,8 @@ Developer-only extras (not installed for normal use): pytest, ruff, mypy, PyInst
 
 ## Download size
 
-The Windows installer is about **260 MB** and FanOut takes about **850 MB** once installed (measured on 2026-11-27, before a
-saving that should make both smaller). Almost all of it is the Chromium browser engine, carried inside so the app works with no
+The Windows installer is about **180 MB** and FanOut takes about **570 MB** once installed (measured on GitHub's Windows
+machine, 2026-11-27). Almost all of it is the Chromium browser engine, carried inside so the app works with no
 other downloads. Mac and Linux download it once during `install.command` instead.
 
 ## For developers
