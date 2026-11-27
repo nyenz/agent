@@ -9,7 +9,8 @@
 <div id="thread"></div>
 <div id="composer"></div>
 <script>
-  // Behaviour is chosen in the address: layout a|b|c, chunks, interval, first, pause_at, pause_ms, stall, captcha.
+  // Behaviour is chosen in the address: layout a|b|c, chunks, interval, first, pause_at, pause_ms, stall, captcha,
+  // slow_clear (ms before the chat box empties after sending, like some real sites).
   const q = new URLSearchParams(location.search);
   const num = (k, d) => (q.has(k) ? Number(q.get(k)) : d);
   const layout = q.get("layout") || "a";
@@ -50,7 +51,7 @@
     const text = readBox().trim();
     if (!text) return;
     window.submits++;
-    clearBox();
+    if (q.has("slow_clear")) setTimeout(clearBox, num("slow_clear", 0)); else clearBox();
     const user = document.createElement("div");
     user.setAttribute("data-message-author-role", "user");
     user.textContent = text;

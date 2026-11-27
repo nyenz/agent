@@ -275,3 +275,14 @@ def test_a_whole_update_with_the_real_bootstrap(github: FakeGitHub, tmp_path: Pa
     assert state["requirements_hash"] == bootstrap.file_hash(root / "requirements.txt"), "packages were refreshed for the new list"
     assert bootstrap.needs_repair(root) == ""
     assert updater.restart_command(root)[0] == str(bootstrap.venv_python(root))
+
+
+def test_only_safe_addresses_are_downloaded(install: Path) -> None:
+    assert updater.allowed_url("https://github.com/x/y.zip")
+    assert updater.allowed_url("http://127.0.0.1:8000/a.zip")
+    for bad in ("file:///etc/passwd", "http://example.com/a.zip", "ftp://example.com/a.zip"):
+        assert not updater.allowed_url(bad), bad
+    info = ReleaseInfo("v9.0.0", (9, 0, 0), "", "", "file:///etc/hosts", "file:///etc/hosts")
+    with pytest.raises(UpdateError, match="didn't look safe"):
+        updater.perform_update(info, install)
+    assert (install / "app.py").read_text() == "print('old app')\n"

@@ -24,6 +24,11 @@ def describe(exc: BaseException) -> FriendlyError:
     """Log the full traceback to fanout.log and return a friendly explanation."""
     log.error("Unhandled error", exc_info=(type(exc), exc, exc.__traceback__))
     text = str(exc).lower()
+    if "browser helper isn't running" in text:
+        return FriendlyError(
+            "FanOut's browser helper stopped.",
+            "Close FanOut and open it again. If it keeps happening, use Settings > Repair installation.",
+        )
     if "executable doesn't exist" in text or "failed to launch" in text or "enoent" in text:
         return FriendlyError(
             "FanOut couldn't start the browser.",

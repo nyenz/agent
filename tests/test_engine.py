@@ -344,6 +344,23 @@ def test_nothing_mapped_yet_still_reads_the_reply_not_the_pages_own_code() -> No
     assert "**w0 w1 w2 w3 END-OF-ANSWER**" in r.markdown
 
 
+def test_a_site_that_clears_its_box_slowly_gets_the_prompt_only_once() -> None:
+    """Regression: the box still held the prompt after 1.5 s, so FanOut tried the next key and sent it twice."""
+
+    async def scenario(browser: Any) -> tuple[AccountResult, int]:
+        page = await open_chat(browser, layout="b", chunks=6, interval=150, first=100, slow_clear=4000)
+        sink: dict[int, AccountResult] = {}
+        settings = RunSettings(stable_seconds=0.8, timeout_seconds=20, min_delay_seconds=0, poll_seconds=0.1, send_check_seconds=0.5)
+        result = await run_one(page, Job(1, "Only once please", MAPPING_TEXTAREA, "fake.example"), settings,
+                               SendTracker(), lambda *_a, **_k: None, sink)
+        return result, int(await page.evaluate("window.submits"))
+
+    result, submits = run_with_browser(scenario)
+    assert result.state == "done", result
+    assert submits == 1, f"the prompt was sent {submits} times"
+    assert result.send_method == "enter"
+
+
 def test_three_prompts_run_at_the_same_time_and_are_saved(tmp_path: Path) -> None:
     async def scenario(browser: Any) -> tuple[list[AccountResult], list[tuple[str, dict[str, Any]]]]:
         pages = {n: await open_chat(browser, layout="a", chunks=10, interval=200, first=200) for n in (1, 2, 3)}
@@ -493,3 +510,15 @@ def test_session_manager_send_all_end_to_end(tmp_path: Path, monkeypatch: pytest
     assert results[1]["state"] == results[2]["state"] == "done"
     assert results[3]["state"] == "error" and "no open window" in results[3]["message"]
     assert events[-1][0] == "run_finished" and (tmp_path / "results").exists()
+
+
+def test_history_trouble_never_blocks_a_run(tmp_path: Path) -> None:
+    blocker = tmp_path / "not-a-folder"
+    blocker.write_text("x")
+    history = PromptHistory(blocker / "history.json")  # its folder can't be made: every save fails
+    history.add("Still works")
+    assert [i["prompt"] for i in history.search()] == ["Still works"]
+    damaged = tmp_path / "old.json"
+    damaged.write_text('[{"prompt": "no time stamp"}, {"ts": 5}, "junk"]')
+    loaded = PromptHistory(damaged).search()
+    assert loaded == [{"ts": "", "prompt": "no time stamp"}]

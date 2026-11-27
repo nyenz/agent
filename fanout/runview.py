@@ -442,6 +442,12 @@ class RunView:
         self.column_info[slot].set(line)
         self.status[slot].set(STATE_WORDS.get(result.state, result.state))
 
+    def stopped(self, text: str) -> None:
+        """The run ended without its usual 'finished' message: make Send usable again."""
+        if self.running:
+            self._finished({"done": sum(r.ok for r in self.results.values()), "total": len(self.results)})
+        self.summary.set(text)
+
     def _finished(self, data: dict[str, Any]) -> None:
         self.running = False
         self.send_button.state(["!disabled"])

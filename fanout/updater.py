@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 from collections.abc import Callable
@@ -65,8 +66,16 @@ def is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
-def _get(url: str, timeout: float, limit: int) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": f"FanOut/{__version__}", "Accept": "application/vnd.github+json"})
+def allowed_url(url: str) -> bool:
+    """Only https addresses (and plain http on this computer, which the tests use) may be fetched."""
+    parts = urllib.parse.urlsplit(url)
+    return parts.scheme == "https" or (parts.scheme == "http" and parts.hostname in ("127.0.0.1", "localhost"))
+
+
+def _get(url: str, timeout: float, limit: int, accept: str = "application/octet-stream") -> bytes:
+    if not allowed_url(url):
+        raise UpdateError("The update address didn't look safe, so I didn't download it. Nothing was changed.")
+    request = urllib.request.Request(url, headers={"User-Agent": f"FanOut/{__version__}", "Accept": accept})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         data: bytes = response.read(limit + 1)
     if len(data) > limit:
@@ -77,7 +86,7 @@ def _get(url: str, timeout: float, limit: int) -> bytes:
 def fetch_latest(api_url: str = API_URL, timeout: float = 8.0) -> ReleaseInfo | None:
     """The newest published release that carries a source zip and its checksum, or None. Never raises."""
     try:
-        data: dict[str, Any] = json.loads(_get(api_url, timeout, 2_000_000))
+        data: dict[str, Any] = json.loads(_get(api_url, timeout, 2_000_000, "application/vnd.github+json"))
         tag = str(data.get("tag_name", ""))
         version = parse_version(tag)
         assets = {str(a.get("name", "")): str(a.get("browser_download_url", "")) for a in data.get("assets", [])}

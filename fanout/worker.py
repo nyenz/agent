@@ -21,6 +21,10 @@ log = logging.getLogger(__name__)
 ManagerFactory = Callable[[Callable[..., None]], SessionManager]
 
 
+class WorkerNotRunningError(RuntimeError):
+    """The background helper that drives the browsers has stopped or never started."""
+
+
 class Worker:
     """Runs a SessionManager on its own thread and loop."""
 
@@ -45,8 +49,8 @@ class Worker:
 
     def submit(self, command: str, **payload: Any) -> None:
         """Queue a command for the worker. Safe to call from the GUI thread."""
-        if not self._ready.wait(timeout=10) or self._loop is None or self._commands is None:
-            raise RuntimeError("The browser helper did not start")
+        if not self._ready.wait(timeout=10) or self._loop is None or self._commands is None or not self._thread.is_alive():
+            raise WorkerNotRunningError("FanOut's browser helper isn't running")
         self._loop.call_soon_threadsafe(self._commands.put_nowait, (command, payload))
 
     def shutdown(self, timeout: float = 20.0) -> bool:
@@ -63,7 +67,13 @@ class Worker:
     # ----- worker thread --------------------------------------------------------------------
 
     def _run(self) -> None:
-        asyncio.run(self._main())
+        try:
+            asyncio.run(self._main())
+        except Exception:  # logged with its traceback; the GUI learns of it through submit() failing at once
+            log.exception("The browser helper stopped")
+        finally:
+            self._loop = None
+            self._ready.set()  # never leave submit() waiting for a helper that is gone
 
     async def _main(self) -> None:
         self._loop = asyncio.get_running_loop()
@@ -107,7 +117,7 @@ class Worker:
             raise
         except Exception as exc:
             friendly = describe(exc)
-            self.emit("worker_error", message=friendly.message, fix=friendly.fix)
+            self.emit("worker_error", message=friendly.message, fix=friendly.fix, command=command)
 
     async def _snapshot(self, manager: SessionManager) -> None:
         self.emit("snapshot", **await manager.snapshot())

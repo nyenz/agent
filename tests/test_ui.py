@@ -289,3 +289,48 @@ def test_reuse_mode_confirms_then_plans_in_place_profiles(root: tk.Tk, monkeypat
     assert command == "open_windows"
     assert payload["specs"][0].profile_directory == "Default" and payload["specs"][1].temporary
     app._remove_temp_dir()
+
+
+def _quiet_dialogs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    import fanout.ui as ui_module
+
+    shown: list[str] = []
+    monkeypatch.setattr(ui_module.messagebox, "showerror", lambda _t, text, **_k: shown.append(text))
+    return shown
+
+
+def test_a_failed_window_opening_closes_what_opened_before_going_back(root: tk.Tk, monkeypatch: pytest.MonkeyPatch) -> None:
+    shown = _quiet_dialogs(monkeypatch)
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True), fake_scan(2))
+    app.continue_clicked()
+    app.on_worker_event("worker_error", {"message": "FanOut couldn't start the browser.", "fix": "Try again.", "command": "open_windows"})
+    assert shown and "What to try: Try again." in shown[0]
+    assert app.worker.commands[-1][0] == "close_windows"  # type: ignore[union-attr]
+    assert app.after_windows_closed == app.show_scan
+
+
+def test_a_failed_mapping_stays_on_the_login_screen(root: tk.Tk, monkeypatch: pytest.MonkeyPatch) -> None:
+    shown = _quiet_dialogs(monkeypatch)
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True), fake_scan(2))
+    app.continue_clicked()
+    before = len(app.worker.commands)  # type: ignore[union-attr]
+    app.on_worker_event("worker_error", {"message": "Mapping failed.", "fix": "Click the chat box.", "command": "map_account"})
+    assert shown and list(app.slot_vars) == [1, 2], "the login rows must still be there"
+    assert len(app.worker.commands) == before, "nothing may be closed or reopened"  # type: ignore[union-attr]
+
+
+def test_a_failed_run_makes_send_usable_again(root: tk.Tk, monkeypatch: pytest.MonkeyPatch) -> None:
+    _quiet_dialogs(monkeypatch)
+    app = open_with_worker(root, Config(first_run_notice_dismissed=True), fake_scan(2))
+    app.continue_clicked()
+    app.on_worker_event("slot_state", {"slot": 1, "ready": True, "host": "chat.example.com"})
+    app.finish_login()
+    view = app.run_view
+    assert view is not None
+    view.broadcast.insert("1.0", "Hello")
+    view.send()
+    assert view.running and app.worker.commands[-1][0] == "send_all"  # type: ignore[union-attr]
+    app.on_worker_event("worker_error", {"message": "Something unexpected went wrong.", "fix": "Try again.", "command": "send_all"})
+    assert not view.running
+    assert "disabled" not in view.send_button.state()
+    assert "try again" in view.summary.get().lower()

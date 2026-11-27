@@ -12,7 +12,7 @@ import logging
 import os
 import shutil
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -128,7 +128,7 @@ def sessions_dir() -> Path:
     return app_data_dir() / "sessions"
 
 
-def app_managed_specs(count: int, import_from: list[Path | None] | None = None) -> list[SlotSpec]:
+def app_managed_specs(count: int, import_from: Sequence[Path | None] | None = None) -> list[SlotSpec]:
     """Mode A: a private persistent profile per account, optionally seeded from Brave profiles."""
     sources = import_from or []
     return [
@@ -187,6 +187,15 @@ def import_logins(src_profile: Path, dest_user_data_dir: Path) -> bool:
             path.unlink(missing_ok=True)
         return False
     return True
+
+
+def taskkill_args(pids: Sequence[int]) -> list[str]:
+    """Windows command that politely asks exactly these processes to close (no /F, and never by name,
+    so FanOut's own browser windows are left alone)."""
+    args = ["taskkill"]
+    for pid in pids:
+        args += ["/PID", str(pid)]
+    return args
 
 
 def _is_ours(proc: Any, me: Any) -> bool:
@@ -505,13 +514,13 @@ class SessionManager:
         self._contexts.clear()
         await asyncio.gather(*(self._close_context(c) for c in contexts), return_exceptions=True)
         private = [s.user_data_dir for s in self._specs.values() if s.temporary or sessions_dir() in s.user_data_dir.parents]
+        stopped = reap_orphans(private)  # first, so no browser still holds files in a temporary copy (Windows locks them)
+        if stopped:
+            log.warning("Stopped %d leftover browser process(es)", stopped)
         for spec in self._specs.values():
             if spec.temporary:
                 shutil.rmtree(spec.user_data_dir, ignore_errors=True)
         self._specs.clear()
-        stopped = reap_orphans(private)
-        if stopped:
-            log.warning("Stopped %d leftover browser process(es)", stopped)
         self.emit("windows_closed")
 
     @staticmethod
@@ -554,12 +563,13 @@ class SessionManager:
 
     async def close_user_brave(self, timeout: float = 15.0) -> bool:
         """Ask the person's own Brave to quit politely. Only called after they agreed. Never forces."""
-        if not self._users_brave_pids():
+        theirs = self._users_brave_pids()
+        if not theirs:
             self.emit("brave_closed", ok=True)
             return True
         if sys.platform == "win32":
             polite = await asyncio.create_subprocess_exec(  # no /F: asks Brave to close, never forces
-                "taskkill", "/IM", "brave.exe", stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+                *taskkill_args(theirs), stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
             )
             await polite.wait()
         else:

@@ -177,8 +177,24 @@ async def press_send(page: Any, locator: Any, mapping: Mapping, method: str) -> 
         return False
 
 
-async def send_message(page: Any, locator: Any, mapping: Mapping, prompt: str, remembered: str, check_seconds: float) -> str:
-    """Send what is typed. Tries the send button, Enter, Ctrl+Enter, Meta+Enter, then looks for the button again."""
+async def site_took_it(page: Any, mapping: Mapping, before_count: int) -> bool:
+    """True if the site shows it accepted a message: a Stop button appeared, or there are more messages than before."""
+    try:
+        info = await read_reply(page, mapping.message_selector)
+    except RunProblem:
+        return False
+    return bool(info.get("busy")) or (bool(mapping.message_selector) and int(info.get("count", 0)) > before_count)
+
+
+async def send_message(
+    page: Any, locator: Any, mapping: Mapping, prompt: str, remembered: str, check_seconds: float, before_count: int = -1,
+) -> str:
+    """Send what is typed. Tries the send button, Enter, Ctrl+Enter, Meta+Enter, then looks for the button again.
+
+    After each try it checks whether the message went: the chat box no longer holds it, or the site started
+    answering (`before_count` >= 0 turns on that second check). Only then is the next way tried, so a site that
+    clears its box slowly never gets the same prompt twice.
+    """
     order = list(SEND_ORDER)
     if remembered in order:
         order.remove(remembered)
@@ -193,6 +209,8 @@ async def send_message(page: Any, locator: Any, mapping: Mapping, prompt: str, r
         except Exception:
             still_there = False
         if not still_there:
+            return method
+        if before_count >= 0 and await site_took_it(page, mapping, before_count):
             return method
     raise RunProblem(
         "I typed the prompt but couldn't send it.",
@@ -278,7 +296,7 @@ async def run_one(
             raise RunProblem(f"ACCOUNT {job.slot}: I couldn't type into the chat box.",
                              "Click inside the chat box in that window once, then press Retry failed.")
         method = await send_message(page, locator, mapping, job.prompt, tracker.method.get(job.slot, ""),
-                                    settings.send_check_seconds)
+                                    settings.send_check_seconds, int(before.get("count", 0)))
         tracker.mark(job.slot, method)
         status("sent")
         watcher = ReplyWatcher(before["text"], job.prompt, settings.stable_seconds, int(before.get("count", 0)))

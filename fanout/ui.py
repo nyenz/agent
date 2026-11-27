@@ -761,8 +761,19 @@ class FanOutApp:
             if callback:
                 callback()
         elif kind == "worker_error":
-            messagebox.showerror("FanOut", f"{data['message']}\n\nWhat to try: {data['fix']}")
+            self.on_worker_error(str(data.get("command", "")), str(data["message"]), str(data["fix"]))
+
+    def on_worker_error(self, command: str, message: str, fix: str) -> None:
+        """Explain a failure, then put the screen back to a state that matches what is really open."""
+        messagebox.showerror("FanOut", f"{message}\n\nWhat to try: {fix}")
+        if command == "open_windows":
+            self.back_to_scan()  # some windows may have opened: close them so Continue can't open them twice
+        elif command == "close_windows":
+            self.after_windows_closed = None
             self.show_scan()
+        elif command == "send_all" and self.run_view is not None:
+            self.run_view.stopped("The run stopped because of a problem. Press SEND TO ALL to try again.")
+        # anything else (mapping, picking, closing Brave): stay on the current screen
 
     def _on_brave_closed(self, ok: bool) -> None:
         if ok:

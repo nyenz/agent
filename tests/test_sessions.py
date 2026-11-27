@@ -479,6 +479,7 @@ def test_worker_survives_a_failing_command() -> None:
     worker.submit("open_windows", specs=[], exe=None, screen=(100, 100))
     err = drain(events, "worker_error")
     assert "secret internal detail" not in err["message"] + err["fix"]
+    assert err["command"] == "open_windows", "the screen needs to know what failed"
     worker.submit("snapshot")
     drain(events, "snapshot")  # the loop is still alive
     assert worker.shutdown(timeout=5)
@@ -495,3 +496,31 @@ def sys_module(name: str) -> Any:
     import importlib
 
     return importlib.import_module(name)
+
+
+def test_a_helper_that_cannot_start_fails_at_once_with_plain_words() -> None:
+    import time as _time
+
+    from fanout.errors import describe
+    from fanout.worker import WorkerNotRunningError
+
+    events: queue.Queue[tuple[str, Any]] = queue.Queue()
+
+    def broken_factory(_emit: Any) -> SessionManager:
+        raise RuntimeError("boom inside the helper")
+
+    worker = Worker(events, manager_factory=broken_factory)
+    worker.start()
+    started = _time.monotonic()
+    with pytest.raises(WorkerNotRunningError) as caught:
+        worker.submit("snapshot")
+    assert _time.monotonic() - started < 3, "the window must not freeze waiting for a dead helper"
+    shown = describe(caught.value).text()
+    assert "browser helper stopped" in shown and "boom" not in shown
+    assert worker.shutdown(timeout=1)
+
+
+def test_closing_the_persons_brave_on_windows_targets_only_their_processes() -> None:
+    args = sessions.taskkill_args([101, 202])
+    assert args == ["taskkill", "/PID", "101", "/PID", "202"]
+    assert "/F" not in args and "/IM" not in args, "never force, never close every Brave by name"

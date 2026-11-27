@@ -6,6 +6,7 @@ Nothing here touches Tk or the browser, so it is all unit-testable.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import tempfile
@@ -14,6 +15,8 @@ from dataclasses import asdict, dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 HISTORY_LIMIT = 200
 CHROME_LINES = {
@@ -307,7 +310,11 @@ class PromptHistory:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(raw, list):
-                self.items = [i for i in raw if isinstance(i, dict) and isinstance(i.get("prompt"), str)][-HISTORY_LIMIT:]
+                self.items = [
+                    {"ts": str(i.get("ts", "")), "prompt": i["prompt"]}
+                    for i in raw
+                    if isinstance(i, dict) and isinstance(i.get("prompt"), str)
+                ][-HISTORY_LIMIT:]
         except (OSError, ValueError):
             self.items = []
 
@@ -317,7 +324,10 @@ class PromptHistory:
         if not prompt or (self.items and self.items[-1]["prompt"] == prompt):
             return
         self.items = [*self.items, {"ts": time.strftime("%Y-%m-%d %H:%M"), "prompt": prompt}][-HISTORY_LIMIT:]
-        write_text_atomic(self.path, json.dumps(self.items, ensure_ascii=False))
+        try:
+            write_text_atomic(self.path, json.dumps(self.items, ensure_ascii=False))
+        except OSError:  # the history is a convenience: it must never stop a run from being sent
+            log.warning("Could not save the prompt history", exc_info=True)
 
     def search(self, text: str = "") -> list[dict[str, str]]:
         """Prompts containing `text` (any case), newest first."""
