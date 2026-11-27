@@ -87,6 +87,6 @@
   "No Tkinter here: the results screen (fanout/runview.py) and its hooks in ui.py were type-checked and smoke-tested with a stand-in only; items 10 (Compare view, Copy All on screen) and 13 (no leftover browsers when the real app closes) stay UNTESTED",
   "Sandbox quirk: finished Chrome children can linger as zombies under the sandbox init; tests ignore zombies and wait up to 5 s"
  ],
- "last_commit": "PENDING",
+ "last_commit": "b921078",
  "safety_baseline": "Tracked files are code, tests, .gitignore and FANOUT_STATE.json only. .gitignore excludes sessions/ browser_profile/ config.json results/ logs/ .venv/ install_state.json .backup/ dist/ build/. App data (config, sessions, logs) lives in the per-user app data folder, outside the repo. Login import copies only Network/Cookies(+journal), Preferences and Local State."
 }
