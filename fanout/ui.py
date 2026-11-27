@@ -7,6 +7,7 @@ thread that only talks to the UI through a queue, which `pump` drains every 80 m
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import shutil
 import tempfile
@@ -206,10 +207,14 @@ class FanOutApp:
         """Ask GitHub on a helper thread. Silent when offline, unless the user pressed the button."""
         if not manual and not self.cfg.check_updates:
             return
+        if not manual and os.environ.get("FANOUT_NO_UPDATE_CHECK"):
+            return  # tests and demos stay off the network
+        # The helper thread must not hold on to `self`: if it dropped the last reference, Tk objects would be freed
+        # on the wrong thread, which aborts the whole program on macOS.
+        events, skipped = self.events, "" if manual else self.cfg.skipped_version
 
         def work() -> None:
-            info = updater.check_for_update(__version__, "" if manual else self.cfg.skipped_version)
-            self.events.put(("update_checked", (info, manual)))
+            events.put(("update_checked", (updater.check_for_update(__version__, skipped), manual)))
 
         threading.Thread(target=work, name="fanout-update-check", daemon=True).start()
 
@@ -290,15 +295,16 @@ class FanOutApp:
             return
         self.working_on_update = True
         self._set_update_text("Starting the update...")
+        events = self.events  # not `self`: see start_update_check
 
         def work() -> None:
             try:
-                new = updater.perform_update(info, progress=lambda t: self.events.put(("update_progress", t)))
-                self.events.put(("update_done", (new, "")))
+                new = updater.perform_update(info, progress=lambda t: events.put(("update_progress", t)))
+                events.put(("update_done", (new, "")))
             except updater.UpdateError as exc:
-                self.events.put(("update_done", ("", str(exc))))
-            except Exception as exc:
-                self.events.put(("update_done", ("", describe(exc).text())))
+                events.put(("update_done", ("", str(exc))))
+            except Exception as exc:  # the traceback goes to the log (describe), the person sees plain words
+                events.put(("update_done", ("", describe(exc).text())))
 
         threading.Thread(target=work, name="fanout-update", daemon=True).start()
 
@@ -314,9 +320,10 @@ class FanOutApp:
         if not messagebox.askyesno("Repair FanOut", question):
             return
         self.working_on_update = True
+        events = self.events  # not `self`: see start_update_check
 
         def work() -> None:
-            self.events.put(("repair_done", updater.repair_installation()))
+            events.put(("repair_done", updater.repair_installation()))
 
         threading.Thread(target=work, name="fanout-repair", daemon=True).start()
 
@@ -325,12 +332,13 @@ class FanOutApp:
     def start_scan(self) -> None:
         """Show the splash and scan Brave on a helper thread."""
         self.show_splash()
+        events, scan_fn = self.events, self.scan_fn  # not `self`: see start_update_check
 
         def work() -> None:
             try:
-                self.events.put(("scan", self.scan_fn()))
-            except Exception as exc:
-                self.events.put(("scan_error", exc))
+                events.put(("scan", scan_fn()))
+            except Exception as exc:  # any failure must reach the UI via the queue
+                events.put(("scan_error", exc))
 
         threading.Thread(target=work, name="fanout-scan", daemon=True).start()
 

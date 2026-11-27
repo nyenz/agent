@@ -41,7 +41,7 @@ def test_candidate_roots_per_os(tmp_path: Path) -> None:
     assert [p.parent.name for p in win] == ["Brave-Browser", "Brave-Browser-Beta", "Brave-Browser-Nightly"]
     mac = brave.candidate_roots("darwin", {}, home)
     assert mac[0] == home / "Library" / "Application Support" / "BraveSoftware" / "Brave-Browser"
-    linux = {str(p.relative_to(home)) for p in brave.candidate_roots("linux", {}, home)}
+    linux = {p.relative_to(home).as_posix() for p in brave.candidate_roots("linux", {}, home)}
     assert ".config/BraveSoftware/Brave-Browser" in linux
     assert ".var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser" in linux
     assert "snap/brave/current/.config/BraveSoftware/Brave-Browser" in linux

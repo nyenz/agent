@@ -260,7 +260,7 @@ def test_three_windows_open_tiled_with_banners() -> None:
         x, y, w, h = sessions.tile_geometry(i, 3, 1800, 1000)
         assert f"--window-position={x},{y}" in ctx.options["args"]
         assert f"--window-size={w},{h}" in ctx.options["args"]
-        assert ctx.options["headless"] is False and ctx.options["executable_path"] == "/opt/brave"
+        assert ctx.options["headless"] is False and Path(ctx.options["executable_path"]) == Path("/opt/brave")
         assert f"ACCOUNT {i + 1} - log into your chat site here" in ctx.scripts[0]
         assert Path(ctx.user_dir).name == f"account_{i + 1}"
         assert ctx.closed
