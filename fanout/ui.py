@@ -103,6 +103,7 @@ class FanOutApp:
         self.working_on_update = False
 
         root.title(f"FanOut {__version__}")
+        self._set_icon()
         root.geometry("940x600")
         root.minsize(760, 480)
         root.report_callback_exception = self._on_tk_error
@@ -122,6 +123,15 @@ class FanOutApp:
         self.start_update_check()
         self._pump_job = root.after(PUMP_MS, self.pump)
 
+    def _set_icon(self) -> None:
+        """FanOut's own icon on the window and taskbar (never the default feather)."""
+        icon = Path(__file__).resolve().parent / "assets" / "icon.png"
+        try:
+            self._icon_image = tk.PhotoImage(file=str(icon))
+            self.root.iconphoto(True, self._icon_image)
+        except (tk.TclError, OSError):
+            log.warning("Could not load the window icon", exc_info=True)
+
     # ----- plumbing -------------------------------------------------------------------------
 
     def pump(self) -> None:
@@ -133,7 +143,7 @@ class FanOutApp:
                     self.on_scan(payload)
                 elif kind == "scan_error":
                     self.show_problem(describe(payload))
-                elif kind in ("update_checked", "update_progress", "update_done", "repair_done"):
+                elif kind in ("update_checked", "update_progress", "update_done", "update_install", "repair_done"):
                     self.on_update_event(kind, payload)
                 else:
                     self.on_worker_event(kind, payload)
@@ -227,6 +237,16 @@ class FanOutApp:
                 messagebox.showinfo("FanOut", f"You have the newest version ({__version__}), or I couldn't reach GitHub just now.")
         elif kind == "update_progress":
             self._set_update_text(str(payload))
+        elif kind == "update_install":
+            self._set_update_text("Installing the update. FanOut will close and open again by itself...")
+            try:
+                updater.start_installer(payload)
+            except OSError:
+                log.exception("Could not start the installer")
+                self.working_on_update = False
+                messagebox.showerror("FanOut update", "I couldn't start the installer. Nothing was changed. Please try again.")
+                return
+            self.root.after(800, self.close)
         elif kind == "update_done":
             self.working_on_update = False
             new_version, problem = payload
@@ -281,8 +301,9 @@ class FanOutApp:
         info = self.update_info
         if info is None or self.working_on_update:
             return
-        if updater.is_frozen():
-            webbrowser.open(info.page_url)  # a packaged app can't swap its own files: send them to the download
+        installer = updater.can_self_install(info)
+        if updater.is_frozen() and not installer:
+            webbrowser.open(info.page_url)  # a packaged Mac/Linux copy can't replace itself: open the download page
             return
         if self.is_busy():
             messagebox.showinfo(
@@ -299,6 +320,10 @@ class FanOutApp:
 
         def work() -> None:
             try:
+                if installer:
+                    setup = updater.download_installer(info, progress=lambda t: events.put(("update_progress", t)))
+                    events.put(("update_install", setup))
+                    return
                 new = updater.perform_update(info, progress=lambda t: events.put(("update_progress", t)))
                 events.put(("update_done", (new, "")))
             except updater.UpdateError as exc:
@@ -311,7 +336,11 @@ class FanOutApp:
     def repair_installation(self) -> None:
         """Rebuild anything missing (packages, built-in browser). Settings and results are untouched."""
         if updater.is_frozen():
-            messagebox.showinfo("FanOut", "This packaged version can't repair itself. Download it again from the FanOut Releases page.")
+            messagebox.showinfo(
+                "FanOut",
+                "To repair this copy, download FanOut-Setup from the FanOut Releases page and run it again. "
+                "Your settings, logins and results are kept.",
+            )
             return
         if self.is_busy() or self.working_on_update:
             messagebox.showinfo("FanOut", "Please finish or cancel the current run and close the browser windows first, then try again.")

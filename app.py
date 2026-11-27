@@ -3,6 +3,7 @@
     python app.py                  open the app
     python app.py --list-profiles  print the Brave profiles found on this computer
     python app.py --smoke-test     open the app, wait for the first screen, then exit
+    python app.py --self-test      check the built-in Chromium can start (no window), then exit
 """
 
 from __future__ import annotations
@@ -30,6 +31,36 @@ def list_profiles() -> int:
     print()
     print(profiles_as_text(result.profiles) if result.profiles else "No Brave profiles found.")
     return 0
+
+
+def self_test() -> int:
+    """Start the built-in Chromium without a window, open a blank page, close it. 0 = works.
+
+    The packaged app has no console, so the outcome also goes to fanout.log.
+    """
+    import asyncio
+
+    async def check() -> str:
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            try:
+                page = await browser.new_page()
+                await page.set_content("<p id=ok>ok</p>")
+                return await page.inner_text("#ok")
+            finally:
+                await browser.close()
+
+    try:
+        ok = asyncio.run(check()) == "ok"
+    except Exception as exc:  # plain words on screen, the traceback only in the log
+        log.exception("Self-test failed")
+        print("SELF-TEST FAILED: " + describe(exc).text())
+        return 1
+    log.info("Self-test passed: the built-in Chromium starts and shows a page")
+    print("SELF-TEST OK: the built-in Chromium starts and shows a page.")
+    return 0 if ok else 1
 
 
 def run_gui(smoke: bool) -> int:
@@ -76,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"FanOut {__version__}")
     parser.add_argument("--list-profiles", action="store_true", help="print Brave profiles and exit")
     parser.add_argument("--smoke-test", action="store_true", help="open the app, check the first screen, exit")
+    parser.add_argument("--self-test", action="store_true", help="check the built-in Chromium starts, exit")
     args = parser.parse_args(argv)
     setup_logging()
     if getattr(sys, "frozen", False):
@@ -84,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.list_profiles:
             return list_profiles()
+        if args.self_test:
+            return self_test()
         return run_gui(smoke=args.smoke_test)
     except Exception as exc:
         print(describe(exc).text())

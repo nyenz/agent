@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import http.server
 import json
+import tempfile
 import threading
 import zipfile
 from collections.abc import Iterator
@@ -39,6 +40,8 @@ class FakeGitHub:
         self.zip_bytes = b""
         self.sha_text = ""
         self.has_sha_asset = True
+        self.setup_bytes = b""
+        self.setup_sha = ""
         outer = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -56,11 +59,19 @@ class FakeGitHub:
                     if outer.has_sha_asset:
                         assets.append({"name": f"FanOut-source-{outer.tag}.zip.sha256", "browser_download_url": f"{base}/asset.sha256"})
                     release = {"tag_name": outer.tag, "body": "Notes here", "html_url": f"{base}/release", "assets": assets}
+                    if outer.setup_bytes:
+                        name = f"FanOut-Setup-{outer.tag.lstrip('v')}.exe"
+                        assets += [{"name": name, "browser_download_url": f"{base}/setup.exe"},
+                                   {"name": f"{name}.sha256", "browser_download_url": f"{base}/setup.sha256"}]
                     body = json.dumps(release).encode()
                 elif self.path == "/asset.zip":
                     body = outer.zip_bytes
                 elif self.path == "/asset.sha256":
                     body = outer.sha_text.encode()
+                elif self.path == "/setup.exe":
+                    body = outer.setup_bytes
+                elif self.path == "/setup.sha256":
+                    body = outer.setup_sha.encode()
                 else:
                     self.send_response(404)
                     self.end_headers()
@@ -286,3 +297,49 @@ def test_only_safe_addresses_are_downloaded(install: Path) -> None:
     with pytest.raises(UpdateError, match="didn't look safe"):
         updater.perform_update(info, install)
     assert (install / "app.py").read_text() == "print('old app')\n"
+
+
+def test_the_installed_windows_app_updates_with_the_new_installer(
+    github: FakeGitHub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    github.publish(tmp_path, "9.0.0")
+    github.setup_bytes = b"MZ pretend installer"
+    github.setup_sha = hashlib.sha256(github.setup_bytes).hexdigest() + "  FanOut-Setup-9.0.0.exe\n"
+    info = info_for(github)
+    assert info.has_installer and info.setup_url.endswith("/setup.exe")
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    assert updater.can_self_install(info)
+    steps: list[str] = []
+    setup = updater.download_installer(info, steps.append)
+    assert setup.read_bytes() == b"MZ pretend installer" and setup.name == "FanOut-Setup-9.0.0.exe"
+    assert any("Checking" in s for s in steps)
+    cmd = updater.installer_command(setup)
+    assert cmd[0] == str(setup) and {"/VERYSILENT", "/SUPPRESSMSGBOXES", "/CLOSEAPPLICATIONS", "/relaunch=1"} <= set(cmd)
+
+
+def test_a_bad_installer_download_is_thrown_away(github: FakeGitHub, tmp_path: Path) -> None:
+    github.publish(tmp_path, "9.0.0")
+    github.setup_bytes = b"MZ tampered"
+    github.setup_sha = "0" * 64
+    info = info_for(github)
+    before = set(Path(tempfile.gettempdir()).glob("fanout-setup-*"))
+    with pytest.raises(UpdateError, match="checksum"):
+        updater.download_installer(info)
+    assert set(Path(tempfile.gettempdir()).glob("fanout-setup-*")) == before, "the bad file must be deleted"
+
+
+def test_mac_linux_and_source_copies_do_not_use_the_windows_installer(
+    github: FakeGitHub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    github.publish(tmp_path, "9.0.0")
+    github.setup_bytes = b"MZ"
+    github.setup_sha = hashlib.sha256(b"MZ").hexdigest()
+    info = info_for(github)
+    assert not updater.can_self_install(info), "a copy run from source updates by swapping files instead"
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "platform", "darwin")
+    assert not updater.can_self_install(info)
+    without = ReleaseInfo("v9.0.0", (9, 0, 0), "", "", "https://x/z.zip", "https://x/z.sha256")
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    assert not updater.can_self_install(without), "no installer in the release: open the download page instead"

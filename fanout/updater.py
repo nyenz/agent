@@ -35,8 +35,10 @@ log = logging.getLogger(__name__)
 REPO = "nyenz/agent"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 SOURCE_PREFIX = "FanOut-source-"
+SETUP_PREFIX = "FanOut-Setup-"
 PROTECTED = {".venv", ".backup", ".git", "install_state.json", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
 MAX_DOWNLOAD = 100 * 1024 * 1024
+MAX_INSTALLER = 1024 * 1024 * 1024
 KEEP_BACKUPS = 3
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -53,6 +55,12 @@ class ReleaseInfo:
     page_url: str
     zip_url: str
     sha_url: str
+    setup_url: str = ""  # Windows installer (FanOut-Setup-x.y.z.exe), used by the installed app
+    setup_sha_url: str = ""
+
+    @property
+    def has_installer(self) -> bool:
+        return bool(self.setup_url and self.setup_sha_url)
 
 
 def parse_version(text: str) -> tuple[int, ...] | None:
@@ -93,8 +101,10 @@ def fetch_latest(api_url: str = API_URL, timeout: float = 8.0) -> ReleaseInfo | 
         zips = [n for n in assets if n.startswith(SOURCE_PREFIX) and n.endswith(".zip")]
         if version is None or not zips or f"{zips[0]}.sha256" not in assets:
             return None
+        setups = [n for n in assets if n.startswith(SETUP_PREFIX) and n.endswith(".exe") and f"{n}.sha256" in assets]
         return ReleaseInfo(tag, version, str(data.get("body") or ""), str(data.get("html_url") or ""),
-                           assets[zips[0]], assets[f"{zips[0]}.sha256"])
+                           assets[zips[0]], assets[f"{zips[0]}.sha256"],
+                           assets[setups[0]] if setups else "", assets[f"{setups[0]}.sha256"] if setups else "")
     except (OSError, ValueError, UpdateError, AttributeError, TypeError):
         log.info("Update check skipped (offline or no usable release)", exc_info=True)
         return None
@@ -275,6 +285,47 @@ def perform_update(
             raise UpdateError("The update didn't finish, so I went back to your old version. It still works. Nothing was lost.")
     prune_backups(root)
     return ".".join(str(n) for n in info.version)
+
+
+def can_self_install(info: ReleaseInfo) -> bool:
+    """True when this copy updates by running the new Windows installer (the installed FanOut-Setup app)."""
+    return is_frozen() and sys.platform == "win32" and info.has_installer
+
+
+def download_installer(info: ReleaseInfo, progress: Callable[[str], None] = lambda _t: None, timeout: float = 120.0) -> Path:
+    """Download and verify the new installer into a fresh temporary folder. Returns its path.
+
+    Nothing is installed yet, so on any problem nothing has changed.
+    """
+    if not info.has_installer:
+        raise UpdateError("This release has no Windows installer. Nothing was changed.")
+    folder = Path(tempfile.mkdtemp(prefix="fanout-setup-"))
+    target = folder / f"{SETUP_PREFIX}{info.tag.lstrip('v')}.exe"
+    progress("Downloading the update...")
+    try:
+        target.write_bytes(_get(info.setup_url, timeout, MAX_INSTALLER))
+        wanted = read_checksum(_get(info.setup_sha_url, timeout, 10_000).decode("utf-8", "replace"))
+    except OSError as exc:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise UpdateError("I couldn't download the update. Check your internet connection and try again.") from exc
+    progress("Checking the download...")
+    if hashlib.sha256(target.read_bytes()).hexdigest() != wanted:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise UpdateError("The download didn't match its checksum, so I did not install it. Nothing was changed.")
+    return target
+
+
+def installer_command(setup: Path) -> list[str]:
+    """Run the installer with no questions, close FanOut if needed, and reopen FanOut when it is done."""
+    return [str(setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/relaunch=1"]
+
+
+def start_installer(setup: Path) -> None:
+    """Start the installer on its own, so it keeps going after this copy of FanOut closes."""
+    flags = 0
+    if sys.platform == "win32":
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+    subprocess.Popen(installer_command(setup), creationflags=flags, close_fds=True)
 
 
 def restart_command(root: Path = ROOT) -> list[str]:

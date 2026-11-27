@@ -50,3 +50,25 @@ jobs:
       - name: App opens its first screen (smoke test, virtual screen)
         if: runner.os == 'Linux'
         run: xvfb-run -a python app.py --smoke-test
+
+  windows-installer:
+    # Builds the real one-file installer and installs, opens, updates and uninstalls it on a Windows machine.
+    needs: lint
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt "pyinstaller>=6.10,<7"
+      - name: Build FanOut-Setup.exe
+        shell: pwsh
+        run: ./packaging/build_windows.ps1
+      - name: Install, open, update and uninstall it
+        shell: pwsh
+        run: ./packaging/test_windows_installer.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FanOut-Setup-windows
+          path: dist/FanOut-Setup-*.exe*
+          retention-days: 14

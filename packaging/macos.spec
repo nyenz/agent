@@ -10,6 +10,7 @@ datas, binaries, hidden = pieces(ROOT)
 a = Analysis([str(ROOT / "app.py")], pathex=[str(ROOT)], datas=datas, binaries=binaries, hiddenimports=hidden,
              excludes=["tests", "pytest", "mypy", "ruff"])
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="FanOut", console=False)
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="FanOut", console=False,
+          icon=str(ROOT / "packaging" / "icons" / "fanout.icns"))
 coll = COLLECT(exe, a.binaries, a.datas, name="FanOut")
-app = BUNDLE(coll, name="FanOut.app", bundle_identifier="io.github.nyenz.fanout")
+app = BUNDLE(coll, name="FanOut.app", icon=str(ROOT / "packaging" / "icons" / "fanout.icns"), bundle_identifier="io.github.nyenz.fanout")

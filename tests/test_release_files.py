@@ -24,7 +24,7 @@ def load_release_notes():  # type: ignore[no-untyped-def]
 
 def test_workflows_are_valid_yaml_with_the_expected_jobs() -> None:
     ci = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
-    assert set(ci["jobs"]) == {"lint", "test"}
+    assert set(ci["jobs"]) == {"lint", "test", "windows-installer"}
     assert ci["jobs"]["test"]["strategy"]["matrix"]["os"] == ["ubuntu-latest", "windows-latest", "macos-latest"]
     release = yaml.safe_load((REPO / ".github/workflows/release.yml").read_text(encoding="utf-8"))
     assert set(release["jobs"]) == {"build", "publish"}

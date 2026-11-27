@@ -13,7 +13,7 @@ from PyInstaller.utils.hooks import collect_all
 
 def pieces(root: Path) -> tuple[list, list, list]:
     """(datas, binaries, hiddenimports) for Analysis."""
-    datas = [(str(root / "fanout" / "js"), "fanout/js")]
+    datas = [(str(root / "fanout" / "js"), "fanout/js"), (str(root / "fanout" / "assets"), "fanout/assets")]
     binaries: list = []
     hidden = ["psutil", "pyperclip", "tkinter"]
     pw_datas, pw_bins, pw_hidden = collect_all("playwright")

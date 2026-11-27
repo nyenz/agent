@@ -96,7 +96,8 @@ def desktop_entry(root: Path) -> str:
     return (
         "[Desktop Entry]\nType=Application\nName=FanOut\n"
         "Comment=Send different prompts to several chat sites at once\n"
-        f'Exec="{root / "run.command"}"\nPath={root}\nTerminal=false\nCategories=Utility;\n'
+        f'Exec="{root / "run.command"}"\nPath={root}\nIcon={root / "fanout" / "assets" / "icon.png"}\n'
+        "Terminal=false\nCategories=Utility;\n"
     )
 
 
