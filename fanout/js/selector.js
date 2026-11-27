@@ -74,5 +74,28 @@ const FanOutSel = (() => {
     return pathTo(el);
   }
 
-  return { build, stableId, isUnique, isOwn, visible, matches, MESSAGE_SELECTORS };
+  // A visible Stop / Abort / Cancel-generation button means the site is still writing the reply.
+  const STOP_RE = /stop|abort|cancel.?generat/i;
+  function findStop() {
+    const buttons = Array.from(document.querySelectorAll("button, [role='button']"));
+    return buttons.find((b) => {
+      if (!visible(b)) return false;
+      const label = (b.getAttribute("aria-label") || "") + " " + (b.getAttribute("data-testid") || "");
+      return STOP_RE.test(label) || /^stop/i.test((b.innerText || "").trim());
+    }) || null;
+  }
+
+  // Best-effort: a visible CAPTCHA challenge, or a limit message in a dialog or alert.
+  const BLOCK_RE = /verify (that )?you(?:['\u2019]re| are|re) (a )?(human|person)|are you a (robot|human)|captcha|too many requests|rate limit|usage limit|reached (the |your )?(message |usage )?(limit|cap)/i;
+  function blocked() {
+    const frames = Array.from(document.querySelectorAll(
+      'iframe[src*="hcaptcha" i], iframe[src*="turnstile" i], iframe[src*="challenges.cloudflare.com" i], iframe[src*="recaptcha/api2/bframe" i]'));
+    if (frames.some((f) => visible(f) && f.getBoundingClientRect().width >= 200)) return "captcha";
+    const notes = Array.from(document.querySelectorAll("[role='dialog'], [role='alertdialog'], [role='alert']"));
+    const hit = notes.find((n) => visible(n) && BLOCK_RE.test((n.innerText || "").slice(0, 400)));
+    if (!hit) return "";
+    return /captcha|human|robot/i.test(hit.innerText) ? "captcha" : "limit";
+  }
+
+  return { build, stableId, isUnique, isOwn, visible, matches, findStop, blocked, MESSAGE_SELECTORS };
 })();

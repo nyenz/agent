@@ -1,0 +1,93 @@
+<!doctype html>
+<title>Fake streaming chat</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 70px 16px 120px; }
+  #composer { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px; display: flex; gap: 8px; background: #fff; }
+  #box { flex: 1; min-height: 40px; border: 1px solid #888; padding: 6px; }
+  textarea#box { height: 60px; }
+</style>
+<div id="thread"></div>
+<div id="composer"></div>
+<script>
+  // Behaviour is chosen in the address: layout a|b|c, chunks, interval, first, pause_at, pause_ms, stall, captcha.
+  const q = new URLSearchParams(location.search);
+  const num = (k, d) => (q.has(k) ? Number(q.get(k)) : d);
+  const layout = q.get("layout") || "a";
+  const composer = document.getElementById("composer");
+  const thread = document.getElementById("thread");
+  const stopBtn = document.createElement("button");
+  stopBtn.setAttribute("aria-label", "Stop generating");
+  stopBtn.textContent = "Stop";
+  stopBtn.style.display = "none";
+  let box;
+  if (layout === "a") {              // contenteditable box + a Send button
+    box = document.createElement("div");
+    box.contentEditable = "true";
+    box.id = "box";
+  } else {                           // textarea; b sends on Enter, c on Ctrl+Enter, neither has a button
+    box = document.createElement("textarea");
+    box.id = "box";
+  }
+  composer.append(box);
+  if (layout === "a") {
+    const send = document.createElement("button");
+    send.setAttribute("data-testid", "send-button");
+    send.setAttribute("aria-label", "Send message");
+    send.textContent = "Go";
+    send.addEventListener("click", submit);
+    composer.append(send);
+  }
+  composer.append(stopBtn);
+  box.addEventListener("keydown", (e) => {
+    if (layout === "b" && e.key === "Enter" && !e.shiftKey && !e.ctrlKey) { e.preventDefault(); submit(); }
+    if (layout === "c" && e.key === "Enter" && e.ctrlKey) { e.preventDefault(); submit(); }
+  });
+  const readBox = () => (layout === "a" ? box.innerText : box.value);
+  const clearBox = () => { if (layout === "a") box.innerText = ""; else box.value = ""; };
+  window.submits = 0;
+
+  function submit() {
+    const text = readBox().trim();
+    if (!text) return;
+    window.submits++;
+    clearBox();
+    const user = document.createElement("div");
+    user.setAttribute("data-message-author-role", "user");
+    user.textContent = text;
+    thread.append(user);
+    if (q.get("captcha")) {
+      const d = document.createElement("div");
+      d.setAttribute("role", "dialog");
+      d.textContent = "Please verify you are human to continue.";
+      document.body.append(d);
+      return;
+    }
+    stopBtn.style.display = "inline-block";
+    if (q.get("stall")) return;      // the site never answers; Stop stays on screen
+    const answer = document.createElement("div");
+    answer.setAttribute("data-message-author-role", "assistant");
+    answer.className = "markdown";
+    thread.append(answer);
+    const total = num("chunks", 8), interval = num("interval", 150), first = num("first", 300);
+    const pauseAt = num("pause_at", -1), pauseMs = num("pause_ms", 0);
+    const words = [];
+    let i = 0;
+    const render = () => {
+      answer.innerHTML = "<p>Answer for " + text.slice(0, 18).replace(/</g, "&lt;") + "</p><p><strong>" +
+        words.join(" ") + "</strong></p><ul><li>one</li><li>two</li></ul><button>Copy</button>";
+    };
+    const tick = () => {
+      if (i < total) {
+        words.push("w" + i);
+        render();
+        i++;
+        setTimeout(tick, i === pauseAt ? pauseMs : interval);
+      } else {
+        words.push("END-OF-ANSWER");
+        render();
+        stopBtn.style.display = "none";
+      }
+    };
+    setTimeout(tick, first);
+  }
+</script>

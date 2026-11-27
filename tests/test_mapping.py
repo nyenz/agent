@@ -7,15 +7,11 @@ tests/fixtures. They are skipped when no browser can be started.
 from __future__ import annotations
 
 import asyncio
-import os
-import shutil
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import pytest
-
+from browserkit import run_in_browser
 from fanout.config import Config, clean_mappings, load_config, save_config
 from fanout.mapping import Mapping, build_script, get_mapping, load_js, map_account, pick, store_mapping
 from fanout.sessions import SessionManager, banner_script
@@ -23,47 +19,6 @@ from fanout.sessions import SessionManager, banner_script
 FIXTURES = Path(__file__).parent / "fixtures"
 SITE_A = (FIXTURES / "chat_site_a.html").as_uri()
 SITE_B = (FIXTURES / "chat_site_b.html").as_uri()
-
-
-# ----- browser helper --------------------------------------------------------------------------
-
-
-def find_browser() -> str | None:
-    """A browser to test with: FANOUT_TEST_BROWSER, else Chrome/Chromium/Brave on PATH."""
-    explicit = os.environ.get("FANOUT_TEST_BROWSER")
-    if explicit:
-        return explicit
-    for name in ("google-chrome", "chromium", "chromium-browser", "brave-browser", "brave"):
-        found = shutil.which(name)
-        if found:
-            return found
-    return None
-
-
-def run_in_browser(scenario: Callable[[Any], Awaitable[Any]]) -> Any:
-    """Run `scenario(page)` against a fresh headless browser; skip the test if none can start."""
-    from playwright.async_api import async_playwright
-
-    async def main() -> Any:
-        async with async_playwright() as pw:
-            options: dict[str, Any] = {"headless": True}
-            exe = find_browser()
-            if exe:
-                options["executable_path"] = exe
-            if hasattr(os, "geteuid") and os.geteuid() == 0:
-                options["args"] = ["--no-sandbox"]  # test-only: some CI containers run as root
-            try:
-                browser = await pw.chromium.launch(**options)
-            except Exception as exc:  # noqa: BLE001
-                pytest.skip(f"no browser available for tests: {type(exc).__name__}")
-            try:
-                page = await browser.new_page(viewport={"width": 900, "height": 600})
-                await page.add_init_script(banner_script(1))  # as in the real windows
-                return await scenario(page)
-            finally:
-                await browser.close()
-
-    return asyncio.run(main())
 
 
 async def with_selector_lib(page: Any, body: str) -> Any:

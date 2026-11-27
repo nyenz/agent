@@ -74,7 +74,12 @@ class Worker:
             command, payload = await self._commands.get()
             if command == "shutdown":
                 break
-            task = asyncio.create_task(self._dispatch(manager, command, payload))
+            if command == "cancel_run":
+                for running in list(self._tasks):
+                    if running.get_name() == "send_all":
+                        running.cancel()
+                continue
+            task = asyncio.create_task(self._dispatch(manager, command, payload), name=command)
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
         for task in list(self._tasks):
@@ -89,6 +94,7 @@ class Worker:
             "close_brave": manager.close_user_brave,
             "map_account": manager.map_account,
             "pick_element": manager.pick_element,
+            "send_all": manager.send_all,
         }
         try:
             if command == "snapshot":

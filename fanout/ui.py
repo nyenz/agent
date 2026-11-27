@@ -23,6 +23,7 @@ from .brave import DOWNLOAD_URL, BraveProfile, ScanResult, running_brave_cmdline
 from .config import MAX_ACCOUNTS, Config
 from .errors import FriendlyError, describe
 from .mapping import Mapping, find_by_host, store_mapping
+from .runview import RunView
 from .sessions import SlotSpec, account_color, app_managed_specs, plan_reuse_profiles
 from .worker import Worker
 
@@ -89,6 +90,7 @@ class FanOutApp:
         self.slot_host: dict[int, str] = {}
         self.slot_buttons: dict[int, list[ttk.Button]] = {}
         self.fix: FixDialog | None = None
+        self.run_view: RunView | None = None
         self.continue_button: ttk.Button | None = None
         self.pending_profiles: list[BraveProfile] = []
         self.temp_dir: Path | None = None
@@ -148,9 +150,13 @@ class FanOutApp:
     def _clear(self) -> None:
         if self.fix is not None:
             self.fix.close()
+        if self.run_view is not None:
+            self.run_view.close()
+            self.run_view = None
         for child in self.body.winfo_children():
             child.destroy()
         self.tree = None
+        self.continue_button, self.slot_buttons = None, {}  # their widgets are gone now
 
     def _announce(self, screen: str, detail: str) -> None:
         if self.on_screen:
@@ -556,6 +562,10 @@ class FanOutApp:
     def on_worker_event(self, kind: str, data: dict[str, object]) -> None:
         """Apply an event from the browser helper thread (runs on the Tk thread)."""
         slot = int(data.get("slot", 0))  # type: ignore[call-overload]
+        if kind.startswith("run_"):
+            if self.run_view is not None:
+                self.run_view.on_event(kind, data)
+            return
         if kind == "slot_open":
             self._set_slot(slot, "Window open. Go to your chat site there and log in.")
         elif kind == "slot_note":
@@ -632,16 +642,7 @@ class FanOutApp:
         ready = sorted(n for n, ok in self.slot_ready.items() if ok)
         self._submit("snapshot")
         self._clear()
-        ttk.Label(self.body, text="Logins are ready", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
-        ttk.Label(
-            self.body,
-            text=(
-                f"{len(ready)} account(s) ready: {', '.join(f'ACCOUNT {n}' for n in ready)}. "
-                "The prompt screen arrives in the next update; your windows stay open until you go back or quit."
-            ),
-            wraplength=800,
-        ).pack(anchor="w", pady=(8, 16))
-        ttk.Button(self.body, text="Close windows and go back", command=self.back_to_scan).pack(anchor="w")
+        self.run_view = RunView(self, ready)
         self._announce("logins-ready", f"{len(ready)} ready")
 
     def back_to_scan(self) -> None:

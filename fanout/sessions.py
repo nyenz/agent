@@ -18,10 +18,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit
 
-from . import mapping as mapping_tools
+from . import engine, mapping as mapping_tools
 from .brave import BraveProfile, running_brave_processes
 from .config import app_data_dir
 from .errors import describe
+from .logging_setup import log_dir
 
 log = logging.getLogger(__name__)
 
@@ -254,6 +255,7 @@ class SessionManager:
         self._contexts: dict[int, Any] = {}
         self._specs: dict[int, SlotSpec] = {}
         self._watchers: dict[int, asyncio.Task[None]] = {}
+        self.sends = engine.SendTracker()
 
     # ----- opening --------------------------------------------------------------------------
 
@@ -449,6 +451,25 @@ class SessionManager:
             return
         picked = await mapping_tools.pick(page, kind)
         self.emit("pick_result", slot=slot, pick_kind=kind, ok=picked.ok, selector=picked.selector, cancelled=picked.cancelled)
+
+    # ----- sending --------------------------------------------------------------------------
+
+    async def send_all(self, jobs: list[dict[str, Any]], settings: dict[str, Any] | None = None) -> None:
+        """Send a different prompt in each listed window at the same time and wait for the replies."""
+        job_list = [
+            engine.Job(
+                slot=int(j["slot"]),
+                prompt=str(j["prompt"]),
+                mapping=mapping_tools.Mapping.from_dict(j.get("mapping")),
+                site=str(j.get("site") or ""),
+            )
+            for j in jobs
+        ]
+        pages = {job.slot: page for job in job_list if (page := self._chat_page(job.slot)) is not None}
+        await engine.run_all(
+            pages, job_list, engine.RunSettings.from_dict(settings), self.sends, self.emit,
+            results_dir=app_data_dir() / "results", shots=log_dir(),
+        )
 
     # ----- reporting and closing ------------------------------------------------------------
 
