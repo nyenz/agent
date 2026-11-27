@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import time
-import tkinter as tk
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from fanout.brave import BraveProfile, ScanResult
-from fanout.config import MAX_ACCOUNTS, Config, load_config, save_config
-from fanout.ui import FanOutApp, profile_key
+tk = pytest.importorskip("tkinter", reason="Tkinter is not installed here")
+
+from fanout.brave import BraveProfile, ScanResult  # noqa: E402
+from fanout.config import MAX_ACCOUNTS, Config, load_config, save_config  # noqa: E402
+from fanout.ui import FanOutApp, profile_key  # noqa: E402
 
 pytestmark = pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")  # Tk variables freed after the window
 

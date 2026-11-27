@@ -9,14 +9,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
-import tkinter as tk
+import threading
 
 from fanout import __version__
 from fanout.brave import profiles_as_text, scan
 from fanout.config import load_config, save_config
+from fanout.errors import describe
 from fanout.logging_setup import setup_logging
-from fanout.ui import FanOutApp
 
 log = logging.getLogger("fanout")
 
@@ -35,12 +36,23 @@ def run_gui(smoke: bool) -> int:
     """Open the window. In smoke mode, exit 0 once the first real screen has appeared."""
     cfg = load_config()
     try:
+        import tkinter as tk
+
+        from fanout.ui import FanOutApp
+    except ImportError:
+        log.exception("Tkinter is not available")
+        print(
+            "FanOut can't open its window because Tkinter (the window toolkit) is missing. "
+            "Double-click INSTALL.bat (Windows) or install.command (Mac/Linux) to fix it."
+        )
+        return 1
+    try:
         root = tk.Tk()
     except tk.TclError:
         log.exception("Could not open a window")
         print(
             "FanOut couldn't open a window. If you're on Linux, make sure a desktop session is running "
-            "and Tkinter is installed. Details are in logs/fanout.log."
+            "and Tkinter is installed. Details are in fanout.log (see the README for where it is)."
         )
         return 1
     outcome = {"code": 1}
@@ -66,9 +78,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--smoke-test", action="store_true", help="open the app, check the first screen, exit")
     args = parser.parse_args(argv)
     setup_logging()
-    if args.list_profiles:
-        return list_profiles()
-    return run_gui(smoke=args.smoke_test)
+    if getattr(sys, "frozen", False):
+        os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "0")  # the packaged app carries its own Chromium
+    threading.excepthook = lambda args: log.error("Unhandled error in a helper thread", exc_info=args.exc_value)
+    try:
+        if args.list_profiles:
+            return list_profiles()
+        return run_gui(smoke=args.smoke_test)
+    except Exception as exc:
+        print(describe(exc).text())
+        return 1
 
 
 if __name__ == "__main__":

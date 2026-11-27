@@ -192,6 +192,13 @@ def venv_python(root: Path) -> Path:
     return py if py.exists() else Path(sys.executable)
 
 
+def plain_tail(output: str) -> str:
+    """Last few lines of a helper's output, or a plain sentence if it looks like a Python crash."""
+    if "Traceback (most recent call last)" in output:
+        return "The helper stopped unexpectedly. The details are in fanout.log."
+    return "\n".join(output.strip().splitlines()[-6:])
+
+
 def refresh_packages(root: Path) -> tuple[bool, str]:
     """Run `bootstrap.py update` with the app's own Python. Returns (ok, last few lines of output)."""
     script = root / "bootstrap.py"
@@ -203,7 +210,7 @@ def refresh_packages(root: Path) -> tuple[bool, str]:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, str(exc)
-    tail = "\n".join((done.stdout + done.stderr).strip().splitlines()[-6:])
+    tail = plain_tail(done.stdout + done.stderr)
     return done.returncode == 0, tail
 
 
@@ -283,5 +290,5 @@ def repair_installation(root: Path = ROOT) -> tuple[bool, str]:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, str(exc)
-    tail = "\n".join((done.stdout + done.stderr).strip().splitlines()[-6:])
+    tail = plain_tail(done.stdout + done.stderr)
     return done.returncode == 0, tail

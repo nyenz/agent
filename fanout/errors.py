@@ -57,5 +57,5 @@ def describe(exc: BaseException) -> FriendlyError:
         )
     return FriendlyError(
         "Something unexpected went wrong.",
-        "Try again. If it repeats, send us logs/fanout.log from the FanOut folder.",
+        "Try again. If it repeats, open Settings > Open logs folder and send us fanout.log.",
     )

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ruff==0.16.9
+      - run: ruff check .
+
+  test:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install packages
+        run: python -m pip install -r requirements-dev.txt
+      - name: Linux needs a virtual screen for the Tk tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk
+      - name: Browser for the real-page tests
+        run: python -m playwright install --with-deps chromium
+      - name: Tests (Linux, with a virtual screen)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python -m pytest
+      - name: Tests
+        if: runner.os != 'Linux'
+        run: python -m pytest
+      - name: App opens its first screen (smoke test)
+        if: runner.os != 'Linux'
+        run: python app.py --smoke-test
+      - name: App opens its first screen (smoke test, virtual screen)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python app.py --smoke-test

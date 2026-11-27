@@ -2,15 +2,39 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import tkinter as tk
-from tkinter import ttk
+from collections.abc import Sequence
+from pathlib import Path
+from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING
 
 from . import __version__
+from .config import app_data_dir
+from .logging_setup import log_dir
 from .settings import DELAY_RANGE, STABLE_RANGE, TIMEOUT_RANGE, apply_settings, parse_settings
 
 if TYPE_CHECKING:
     from .ui import FanOutApp
+
+
+def open_folder_command(path: Path, platform: str = sys.platform) -> Sequence[str]:
+    """Command that shows a folder in the system's file manager (not used for Windows, which has os.startfile)."""
+    return ["open", str(path)] if platform == "darwin" else ["xdg-open", str(path)]
+
+
+def open_folder(path: Path) -> None:
+    """Show a folder in the file manager; say so plainly if that isn't possible."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        if sys.platform == "win32":
+            os.startfile(path)  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(open_folder_command(path))
+    except OSError:
+        messagebox.showinfo("FanOut", f"I couldn't open the folder for you. It is here:\n\n{path}")
 
 
 class SettingsDialog:
@@ -56,7 +80,9 @@ class SettingsDialog:
         buttons = ttk.Frame(body)
         buttons.grid(row=8, column=0, columnspan=3, sticky="w", pady=8)
         ttk.Button(buttons, text="Check for updates", command=self.check_now).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="Repair installation", command=self.repair).pack(side="left")
+        ttk.Button(buttons, text="Repair installation", command=self.repair).pack(side="left", padx=(0, 8))
+        ttk.Button(buttons, text="Open logs folder", command=lambda: open_folder(log_dir())).pack(side="left", padx=(0, 8))
+        ttk.Button(buttons, text="Open results folder", command=lambda: open_folder(app_data_dir() / "results")).pack(side="left")
 
         self.error = ttk.Label(body, textvariable=self.message, foreground="#b00020", wraplength=480, justify="left")
         self.error.grid(row=9, column=0, columnspan=3, sticky="w")
