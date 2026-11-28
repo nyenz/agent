@@ -13,7 +13,7 @@
   "7": "in_progress"
  },
  "current_stage": 1,
- "last_verified_step": "GitHub Actions CI on 78a02b0: lint, windows-installer and tests on windows/macos/ubuntu all green. The new real-browser test (normal launch, attach, banner, READY, clean close, no leftover browser) passed on all three systems.",
+ "last_verified_step": "GitHub Actions CI on e1d532f: lint, windows-installer and tests on windows/macos/ubuntu all green (228 tests, none skipped on ubuntu, including the new window tests for updates that install by themselves).",
  "next_action": "Publish the v0.2.1 release on GitHub (Releases > Draft a new release > tag v0.2.1 > Publish; about 20 minutes to build). Then in your installed FanOut 0.2.0 press the green Update now bar once (0.2.0 cannot install by itself). From then on updates install by themselves. Then try a Cloudflare-protected site in compatibility mode.",
  "files_touched": [
   ".gitignore",
@@ -134,6 +134,6 @@
   "The macOS packaged build failed in the Release workflow (codesign of the bundled Chrome for Testing). Windows and Linux built. Not fixed yet; not part of the compatibility-mode work.",
   "A real Cloudflare-protected chat site needs the person's own Windows PC to prove compatibility mode end to end."
  ],
- "last_commit": "78a02b0",
+ "last_commit": "e1d532f",
  "safety_baseline": "Tracked files are code, tests, .gitignore and FANOUT_STATE.json only. .gitignore excludes sessions/ browser_profile/ config.json results/ logs/ .venv/ install_state.json .backup/ dist/ build/. App data (config, sessions, logs) lives in the per-user app data folder, outside the repo. Login import copies only Network/Cookies(+journal), Preferences and Local State."
 }
