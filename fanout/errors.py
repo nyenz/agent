@@ -30,17 +30,17 @@ def describe(exc: BaseException) -> FriendlyError:
     if isinstance(exc, AttachError):
         return FriendlyError(
             "The window didn't start in compatibility mode.",
-            "FanOut will use its standard mode instead. To stop trying, turn off Compatibility mode in Settings.",
+            "Nyenz Agent will use its standard mode instead. To stop trying, turn off Compatibility mode in Settings.",
         )
     text = str(exc).lower()
     if "browser helper isn't running" in text:
         return FriendlyError(
-            "FanOut's browser helper stopped.",
-            "Close FanOut and open it again. If it keeps happening, use Settings > Repair installation.",
+            "Nyenz Agent's browser helper stopped.",
+            "Close Nyenz Agent and open it again. If it keeps happening, use Settings > Repair installation.",
         )
     if "executable doesn't exist" in text or "failed to launch" in text or "enoent" in text:
         return FriendlyError(
-            "FanOut couldn't start the browser.",
+            "Nyenz Agent couldn't start the browser.",
             "If you chose the built-in Chromium, use Settings > Repair installation. "
             "If you use Brave, check that it is installed, then try again.",
         )
@@ -56,12 +56,12 @@ def describe(exc: BaseException) -> FriendlyError:
         )
     if isinstance(exc, PermissionError):
         return FriendlyError(
-            "FanOut isn't allowed to read or write a file it needs.",
-            "Close other programs using it, or run FanOut from a folder you own.",
+            "Nyenz Agent isn't allowed to read or write a file it needs.",
+            "Close other programs using it, or run Nyenz Agent from a folder you own.",
         )
     if isinstance(exc, FileNotFoundError):
         return FriendlyError(
-            "A file FanOut expected to find is missing.",
+            "A file Nyenz Agent expected to find is missing.",
             "Click Rescan. If it keeps happening, use Settings > Repair installation.",
         )
     if isinstance(exc, OSError):

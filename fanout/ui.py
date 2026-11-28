@@ -19,7 +19,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any
 
-from . import __version__, updater
+from . import APP_NAME, __version__, updater
 from .brave import DOWNLOAD_URL, BraveProfile, ScanResult, running_brave_cmdlines, scan
 from .config import MAX_ACCOUNTS, Config
 from .errors import FriendlyError, describe
@@ -101,8 +101,10 @@ class FanOutApp:
         self.update_bar: tk.Frame | None = None
         self.settings_dialog: SettingsDialog | None = None
         self.working_on_update = False
+        self.update_automatic = False  # True while an update started by itself (no question asked) is running
+        self.ready_installer: Path | None = None  # downloaded while a run was going; installed when the run is over
 
-        root.title(f"FanOut {__version__}")
+        root.title(f"{APP_NAME} {__version__}")
         self._set_icon()
         root.geometry("940x600")
         root.minsize(760, 480)
@@ -124,7 +126,7 @@ class FanOutApp:
         self._pump_job = root.after(PUMP_MS, self.pump)
 
     def _set_icon(self) -> None:
-        """FanOut's own icon on the window and taskbar (never the default feather)."""
+        """Nyenz Agent's own icon on the window and taskbar (never the default feather)."""
         icon = Path(__file__).resolve().parent / "assets" / "icon.png"
         try:
             self._icon_image = tk.PhotoImage(file=str(icon))
@@ -169,7 +171,7 @@ class FanOutApp:
         """Any error inside a Tk callback: log the traceback, show a plain message."""
         exc.__traceback__ = tb
         friendly = describe(exc)
-        messagebox.showerror("FanOut", friendly.text())
+        messagebox.showerror("Nyenz Agent", friendly.text())
 
     def _clear(self) -> None:
         if self.fix is not None:
@@ -233,38 +235,77 @@ class FanOutApp:
             info, manual = payload
             if info is not None:
                 self.show_update_banner(info)
+                if not manual and self._may_update_by_itself(info):
+                    self.update_now(automatic=True)
             elif manual:
-                messagebox.showinfo("FanOut", f"You have the newest version ({__version__}), or I couldn't reach GitHub just now.")
+                messagebox.showinfo("Nyenz Agent", f"You have the newest version ({__version__}), or I couldn't reach GitHub just now.")
         elif kind == "update_progress":
             self._set_update_text(str(payload))
         elif kind == "update_install":
-            self._set_update_text("Installing the update. FanOut will close and open again by itself...")
+            if self.is_busy():  # a run started while the file was downloading: never close it from under the person
+                self.working_on_update = False
+                self.update_automatic = False
+                self.ready_installer = payload
+                self._set_update_text("The update is downloaded. When your run is finished, press Update now.")
+                return
+            self._set_update_text("Installing the update. Nyenz Agent will close and open again by itself...")
+            self._remember_auto_try()
             try:
                 updater.start_installer(payload)
             except OSError:
                 log.exception("Could not start the installer")
                 self.working_on_update = False
-                messagebox.showerror("FanOut update", "I couldn't start the installer. Nothing was changed. Please try again.")
+                self.ready_installer = None
+                self._update_failed("I couldn't start the installer. Nothing was changed.")
                 return
             self.root.after(800, self.close)
         elif kind == "update_done":
             self.working_on_update = False
             new_version, problem = payload
             if problem:
-                messagebox.showerror("FanOut update", problem)
-                if self.update_info is not None:
-                    self.show_update_banner(self.update_info)
+                self._update_failed(problem)
                 return
-            messagebox.showinfo("FanOut update", f"FanOut {new_version} is installed. It will restart now.")
+            if not self.update_automatic:
+                messagebox.showinfo("Nyenz Agent update", f"Nyenz Agent {new_version} is installed. It will restart now.")
+            self._remember_auto_try()
             updater.restart()
             self.close()
         elif kind == "repair_done":
             self.working_on_update = False
             ok, tail = payload
             if ok:
-                messagebox.showinfo("FanOut", "Repair finished. Everything FanOut needs is in place.")
+                messagebox.showinfo("Nyenz Agent", "Repair finished. Everything Nyenz Agent needs is in place.")
             else:
-                messagebox.showerror("FanOut", f"The repair didn't finish.\n\n{tail}\n\nCheck your internet connection and try again.")
+                messagebox.showerror("Nyenz Agent", f"The repair didn't finish.\n\n{tail}\n\nCheck your internet connection and try again.")
+
+    def _may_update_by_itself(self, info: updater.ReleaseInfo) -> bool:
+        """True when this new version may be installed without asking: the person allowed it, nothing is running, we
+        have not already tried this version, and this copy can replace itself (a packaged Mac/Linux copy cannot)."""
+        if not self.cfg.auto_update or self.is_busy() or self.working_on_update:
+            return False
+        if info.tag.lstrip("v") == self.cfg.auto_update_tried:
+            return False
+        return not updater.is_frozen() or updater.can_self_install(info)
+
+    def _remember_auto_try(self) -> None:
+        """Write down which version is being installed by itself. If the new copy then starts and the same version is still
+        offered, we do not try again on our own (no restart loop). A download that fails is not written down, so it is retried."""
+        if self.update_automatic and self.update_info is not None:
+            self.cfg.auto_update_tried = self.update_info.tag.lstrip("v")
+            try:
+                self.save(self.cfg)
+            except OSError:
+                log.warning("Could not save the update note", exc_info=True)
+
+    def _update_failed(self, problem: str) -> None:
+        """Say what went wrong. By itself: a line in the green bar (no pop-up out of nowhere). By hand: a message box."""
+        automatic, self.update_automatic = self.update_automatic, False
+        if not automatic:
+            messagebox.showerror("Nyenz Agent update", problem)
+        if self.update_info is not None:
+            self.show_update_banner(self.update_info)
+            if automatic:
+                self._set_update_text(f"The automatic update didn't work. {problem} Press Update now to try again.")
 
     def hide_update_banner(self) -> None:
         if self.update_bar is not None:
@@ -278,7 +319,7 @@ class FanOutApp:
         bar = tk.Frame(self.update_holder, bg="#d9f2e0", padx=12, pady=8)
         bar.pack(fill="x")
         self.update_bar = bar
-        self.update_text = tk.StringVar(value=f"FanOut {info.tag.lstrip('v')} is available (you have {__version__}).")
+        self.update_text = tk.StringVar(value=f"Nyenz Agent {info.tag.lstrip('v')} is available (you have {__version__}).")
         tk.Label(bar, textvariable=self.update_text, bg="#d9f2e0").pack(side="left")
         row = tk.Frame(bar, bg="#d9f2e0")
         row.pack(side="right")
@@ -296,26 +337,37 @@ class FanOutApp:
             self.save(self.cfg)
         self.hide_update_banner()
 
-    def update_now(self) -> None:
-        """Download, verify and install. Never while browser windows are open or another job is running."""
+    def update_now(self, automatic: bool = False) -> None:
+        """Download, verify and install. Never while browser windows are open or another job is running.
+
+        `automatic` means nobody pressed the button: no question is asked and a problem is shown in the bar only."""
         info = self.update_info
         if info is None or self.working_on_update:
             return
         installer = updater.can_self_install(info)
         if updater.is_frozen() and not installer:
-            webbrowser.open(info.page_url)  # a packaged Mac/Linux copy can't replace itself: open the download page
+            if not automatic:
+                webbrowser.open(info.page_url)  # a packaged Mac/Linux copy can't replace itself: open the download page
             return
         if self.is_busy():
+            if automatic:
+                return
             messagebox.showinfo(
-                "FanOut", "Please finish or cancel the current run and close the browser windows first. Then press Update now again."
+                "Nyenz Agent", "Please finish or cancel the current run and close the browser windows first. Then press Update now again."
             )
             return
-        if not messagebox.askyesno(
-            "Update FanOut", f"Install FanOut {info.tag.lstrip('v')} now? Your settings, logins and results are kept. FanOut will restart."
+        if not automatic and not messagebox.askyesno(
+            "Update Nyenz Agent",
+            f"Install Nyenz Agent {info.tag.lstrip('v')} now? Your settings, logins and results are kept. Nyenz Agent will restart.",
         ):
             return
         self.working_on_update = True
-        self._set_update_text("Starting the update...")
+        self.update_automatic = automatic
+        if installer and self.ready_installer is not None and self.ready_installer.is_file():
+            self._set_update_text("Installing the update. Nyenz Agent will close and open again by itself...")
+            self.events.put(("update_install", self.ready_installer))  # already downloaded and checked
+            return
+        self._set_update_text("Installing the new version. It will restart by itself..." if automatic else "Starting the update...")
         events = self.events  # not `self`: see start_update_check
 
         def work() -> None:
@@ -337,16 +389,18 @@ class FanOutApp:
         """Rebuild anything missing (packages, built-in browser). Settings and results are untouched."""
         if updater.is_frozen():
             messagebox.showinfo(
-                "FanOut",
-                "To repair this copy, download FanOut-Setup from the FanOut Releases page and run it again. "
+                "Nyenz Agent",
+                "To repair this copy, download FanOut-Setup from the Nyenz Agent Releases page and run it again. "
                 "Your settings, logins and results are kept.",
             )
             return
         if self.is_busy() or self.working_on_update:
-            messagebox.showinfo("FanOut", "Please finish or cancel the current run and close the browser windows first, then try again.")
+            messagebox.showinfo(
+                "Nyenz Agent", "Please finish or cancel the current run and close the browser windows first, then try again."
+            )
             return
-        question = "Check and rebuild FanOut's packages and built-in browser? This can take a few minutes."
-        if not messagebox.askyesno("Repair FanOut", question):
+        question = "Check and rebuild Nyenz Agent's packages and built-in browser? This can take a few minutes."
+        if not messagebox.askyesno("Repair Nyenz Agent", question):
             return
         self.working_on_update = True
         events = self.events  # not `self`: see start_update_check
@@ -384,7 +438,7 @@ class FanOutApp:
     def show_splash(self) -> None:
         """Startup screen while the scan runs."""
         self._clear()
-        ttk.Label(self.body, text="FanOut", font=("TkDefaultFont", 26, "bold")).pack(pady=(120, 8))
+        ttk.Label(self.body, text="Nyenz Agent", font=("TkDefaultFont", 26, "bold")).pack(pady=(120, 8))
         ttk.Label(self.body, text="Checking setup...", font=("TkDefaultFont", 13)).pack()
 
     def show_problem(self, friendly: FriendlyError) -> None:
@@ -406,8 +460,8 @@ class FanOutApp:
         ttk.Label(
             self.body,
             text=(
-                "FanOut works best with the Brave browser. Download it (it's free), then click "
-                "'Check again'. Or let FanOut use its own built-in Chromium browser instead."
+                "Nyenz Agent works best with the Brave browser. Download it (it's free), then click "
+                "'Check again'. Or let Nyenz Agent use its own built-in Chromium browser instead."
             ),
             wraplength=640,
             justify="center",
@@ -439,7 +493,7 @@ class FanOutApp:
         ttk.Label(self.body, text="Choose your accounts", font=("TkDefaultFont", 16, "bold")).pack(anchor="w")
         ttk.Label(
             self.body,
-            text=f"Tick up to {MAX_ACCOUNTS} Brave profiles. FanOut opens its own windows; you log in once in each.",
+            text=f"Tick up to {MAX_ACCOUNTS} Brave profiles. Nyenz Agent opens its own windows; you log in once in each.",
         ).pack(anchor="w", pady=(0, 8))
 
         if profiles:
@@ -471,7 +525,7 @@ class FanOutApp:
                 side="left", padx=6
             )
 
-        mode = ttk.LabelFrame(self.body, text="How should FanOut open Brave?", padding=8)
+        mode = ttk.LabelFrame(self.body, text="How should Nyenz Agent open Brave?", padding=8)
         mode.pack(fill="x", pady=(12, 0))
         ttk.Radiobutton(mode, text="App-managed windows (recommended)", value="app_managed", variable=self.mode_var).pack(
             anchor="w"
@@ -599,7 +653,7 @@ class FanOutApp:
         ok = messagebox.askokcancel(
             "Use my real Brave profiles",
             "Changes you make in these windows (logins, history, settings) affect your real Brave "
-            "profiles. FanOut never reads or stores your login details.\n\nContinue?",
+            "profiles. Nyenz Agent never reads or stores your login details.\n\nContinue?",
         )
         if not ok:
             self.show_scan()
@@ -618,7 +672,7 @@ class FanOutApp:
             dialog,
             text=(
                 "Brave looks like it's running. To reuse your real profiles, Brave has to be closed first.\n"
-                "FanOut can ask it to close politely (it never forces it), or use its own windows instead."
+                "Nyenz Agent can ask it to close politely (it never forces it), or use its own windows instead."
             ),
             wraplength=460,
             padding=16,
@@ -795,7 +849,7 @@ class FanOutApp:
 
     def on_worker_error(self, command: str, message: str, fix: str) -> None:
         """Explain a failure, then put the screen back to a state that matches what is really open."""
-        messagebox.showerror("FanOut", f"{message}\n\nWhat to try: {fix}")
+        messagebox.showerror("Nyenz Agent", f"{message}\n\nWhat to try: {fix}")
         if command == "open_windows":
             self.back_to_scan()  # some windows may have opened: close them so Continue can't open them twice
         elif command == "close_windows":

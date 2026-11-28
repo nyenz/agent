@@ -43,9 +43,14 @@ def parse_settings(stable: str, timeout: str, delay: str) -> tuple[SettingsValue
 
 
 def apply_settings(
-    cfg: Config, values: SettingsValues, be_gentle: bool, check_updates: bool, compatibility_mode: bool | None = None
+    cfg: Config,
+    values: SettingsValues,
+    be_gentle: bool,
+    check_updates: bool,
+    compatibility_mode: bool | None = None,
+    auto_update: bool | None = None,
 ) -> None:
-    """Copy checked values into the config (the caller saves it). `None` leaves compatibility mode as it is."""
+    """Copy checked values into the config (the caller saves it). `None` leaves that option as it is."""
     cfg.stable_seconds = values.stable_seconds
     cfg.timeout_seconds = values.timeout_seconds
     cfg.min_delay_seconds = values.min_delay_seconds
@@ -53,3 +58,5 @@ def apply_settings(
     cfg.check_updates = check_updates
     if compatibility_mode is not None:
         cfg.compatibility_mode = compatibility_mode
+    if auto_update is not None:
+        cfg.auto_update = auto_update

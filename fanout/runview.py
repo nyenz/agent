@@ -283,7 +283,7 @@ class RunView:
             if prompt:
                 jobs.append(self._job(slot, prompt))
         if not jobs:
-            messagebox.showinfo("FanOut", "Type a prompt first: one for each account, or one for everyone.")
+            messagebox.showinfo("Nyenz Agent", "Type a prompt first: one for each account, or one for everyone.")
             return "break"
         self._start(jobs)
         return "break"
@@ -345,7 +345,7 @@ class RunView:
     def export(self, kind: str) -> None:
         """Save every answer as .md or .json (asks where)."""
         if not self.results:
-            messagebox.showinfo("FanOut", "There is nothing to save yet.")
+            messagebox.showinfo("Nyenz Agent", "There is nothing to save yet.")
             return
         results = list(self.results.values())
         text = export_markdown(results) if kind == "md" else export_json(results)

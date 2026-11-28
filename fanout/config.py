@@ -34,6 +34,8 @@ class Config:
     timeout_seconds: int = 180
     check_updates: bool = True
     compatibility_mode: bool = True  # open windows as a normal browser, then attach after you log in by hand
+    auto_update: bool = True  # install a new version by itself when nothing is running
+    auto_update_tried: str = ""  # the version we last tried by ourselves, so a failure is never retried in a loop
     skipped_version: str = ""
     first_run_notice_dismissed: bool = False
     import_logins: bool = False

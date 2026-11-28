@@ -73,4 +73,4 @@ def test_starting_without_tkinter_says_what_to_do_and_shows_no_traceback(tmp_pat
 def test_commands_that_need_no_window_work_without_tkinter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FANOUT_HOME", str(tmp_path))
     done = run_app("--version", hide_tkinter=True)
-    assert done.returncode == 0 and "FanOut" in done.stdout
+    assert done.returncode == 0 and "Nyenz Agent" in done.stdout

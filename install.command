@@ -1,9 +1,9 @@
 #!/bin/bash
-# FanOut installer for macOS and Linux. Double-click it (or run ./install.command).
+# Nyenz Agent installer for macOS and Linux. Double-click it (or run ./install.command).
 # Safe to run again at any time (it also repairs).
 cd "$(dirname "$0")" || exit 1
 echo
-echo "  FanOut installer"
+echo "  Nyenz Agent installer"
 echo "  ================"
 echo "  This sets everything up. The first time it can take a few minutes."
 echo

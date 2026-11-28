@@ -225,7 +225,7 @@ def test_something_that_isnt_fanout_is_refused(github: FakeGitHub, install: Path
     github.zip_bytes = archive.read_bytes()
     github.sha_text = hashlib.sha256(github.zip_bytes).hexdigest()
     github.tag = "v9.0.0"
-    with pytest.raises(UpdateError, match="didn't look like FanOut"):
+    with pytest.raises(UpdateError, match="didn't look like Nyenz Agent"):
         updater.perform_update(info_for(github), install)
 
 

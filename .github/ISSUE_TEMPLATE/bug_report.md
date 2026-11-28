@@ -13,10 +13,10 @@ labels: bug
 
 **Which computer?**
 - [ ] Windows   - [ ] Mac   - [ ] Linux
-- FanOut version (shown in the window's title bar):
+- Nyenz Agent version (shown in the window's title bar):
 - Browser: Brave / built-in Chromium
 
 **Please attach `fanout.log`**
-Open FanOut, press **Settings**, then **Open logs folder**. Drag `fanout.log` into this box.
+Open Nyenz Agent, press **Settings**, then **Open logs folder**. Drag `fanout.log` into this box.
 It holds technical details only. It never contains your passwords, cookies, prompts or answers.
 Look it over before sending if you like. If anything private is in there, remove those lines.

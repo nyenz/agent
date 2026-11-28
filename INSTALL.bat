@@ -1,10 +1,10 @@
 @echo off
-rem FanOut installer for Windows. Double-click it. Safe to run again at any time (it also repairs).
+rem Nyenz Agent installer for Windows. Double-click it. Safe to run again at any time (it also repairs).
 setlocal EnableExtensions
 cd /d "%~dp0"
-title FanOut installer
+title Nyenz Agent installer
 echo.
-echo   FanOut installer
+echo   Nyenz Agent installer
 echo   ================
 echo   This sets everything up. The first time it can take a few minutes.
 echo   You do not need to type anything.

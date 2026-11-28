@@ -1,4 +1,4 @@
-"""Update FanOut from its GitHub Releases, safely.
+"""Update Nyenz Agent from its GitHub Releases, safely.
 
 Every step is built so that a failure leaves the old version working:
   check (silent when offline) -> download -> verify SHA-256 -> unpack to a staging folder -> sanity-check
@@ -143,11 +143,11 @@ def safe_extract(archive: Path, dest: Path) -> Path:
     children = [c for c in dest.iterdir() if c.is_dir()]
     if len(children) == 1 and (children[0] / "app.py").exists():
         return children[0]
-    raise UpdateError("The update file didn't look like FanOut, so I did not install it. Nothing was changed.")
+    raise UpdateError("The update file didn't look like Nyenz Agent, so I did not install it. Nothing was changed.")
 
 
 def version_in(tree: Path) -> str:
-    """The __version__ written in an unpacked FanOut folder, or ''."""
+    """The __version__ written in an unpacked Nyenz Agent folder, or ''."""
     try:
         text = (tree / "fanout" / "__init__.py").read_text(encoding="utf-8")
     except OSError:
@@ -243,7 +243,7 @@ def perform_update(
     """Download, verify and install `info`. Returns the new version. Raises UpdateError with a plain message.
 
     If the update fails after the swap the old files are restored, then `refresh` runs once more for the old
-    package list, so a failed update leaves the same working FanOut as before.
+    package list, so a failed update leaves the same working Nyenz Agent as before.
     """
     stamp = time.strftime("%Y%m%d-%H%M%S")
     with tempfile.TemporaryDirectory(prefix="fanout-update-") as tmp_name:
@@ -275,7 +275,7 @@ def perform_update(
         except OSError as exc:
             raise UpdateError("I couldn't replace the program files (are they open somewhere?). Nothing was changed.") from exc
 
-        progress("Updating FanOut's packages (this can take a few minutes)...")
+        progress("Updating Nyenz Agent's packages (this can take a few minutes)...")
         ok, tail = refresh(root)
         if not ok:
             log.error("Package refresh failed after update; rolling back. Output: %s", tail)
@@ -316,12 +316,12 @@ def download_installer(info: ReleaseInfo, progress: Callable[[str], None] = lamb
 
 
 def installer_command(setup: Path) -> list[str]:
-    """Run the installer with no questions, close FanOut if needed, and reopen FanOut when it is done."""
+    """Run the installer with no questions, close Nyenz Agent if needed, and reopen Nyenz Agent when it is done."""
     return [str(setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/relaunch=1"]
 
 
 def start_installer(setup: Path) -> None:
-    """Start the installer on its own, so it keeps going after this copy of FanOut closes."""
+    """Start the installer on its own, so it keeps going after this copy of Nyenz Agent closes."""
     flags = 0
     if sys.platform == "win32":
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
@@ -342,7 +342,7 @@ def repair_installation(root: Path = ROOT) -> tuple[bool, str]:
     """Run `bootstrap.py repair` (rebuild anything missing). Returns (ok, last few lines of output)."""
     script = root / "bootstrap.py"
     if not script.exists():
-        return False, "bootstrap.py is missing, so I can't repair. Run INSTALL again from the FanOut folder."
+        return False, "bootstrap.py is missing, so I can't repair. Run INSTALL again from the Nyenz Agent folder."
     try:
         done = subprocess.run(
             [str(venv_python(root)), str(script), "repair", "--no-launch", "--no-dialog", "--no-shortcut"],

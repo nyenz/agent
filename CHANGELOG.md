@@ -9,8 +9,10 @@ Compatibility mode for sites that ask you to prove you are human.
 ### Added
 - **Compatibility mode** (Settings, on by default): each app-managed window now starts as an ordinary browser with its own profile folder and a control port on this computer only. You log in by hand, then FanOut connects to the running window and does everything it did before (banner, READY, mapping, sending, answers). This lets sites that ask you to prove you are human accept your login instead of looping the check. Nothing is faked or hidden, and FanOut still never solves a check for you.
 - If a window can't be opened that way, FanOut opens it the standard way and shows a plain note. Windows that reuse your real Brave profiles keep the standard way (newer browsers ignore the control port there).
+- **Updates install by themselves** (Settings, on by default). When the app starts and a new version is out, it downloads the installer, checks its fingerprint, installs it and reopens, with no question asked. It never does this while browser windows are open, it never tries the same version twice on its own, and a problem shows as a line in the green bar (no pop-up). Press **Update now** to try by hand, or untick the box in Settings to be asked first.
 
 ### Changed
+- **The app is now called Nyenz Agent** (window titles, messages, shortcuts, the Apps list and the docs). The installer upgrades in place and replaces the old FanOut shortcuts. Behind the scenes nothing moved: your data folder is still `FanOut`, the program file is still `FanOut.exe`, and the downloads are still named `FanOut-Setup-...`, so older copies can still find and install this version.
 - Closing now asks the browser to quit first (so your login is saved), then ends it, and clears up any leftover FanOut browser by its own port, never your own Brave.
 
 ### Known limits

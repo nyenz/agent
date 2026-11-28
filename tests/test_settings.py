@@ -71,3 +71,22 @@ def test_repair_runs_bootstrap_repair_without_launching(tmp_path: Path) -> None:
     (tmp_path / "bootstrap.py").unlink()
     ok, tail = updater.repair_installation(tmp_path)
     assert not ok and "INSTALL" in tail
+
+
+def test_auto_update_is_on_by_default_and_can_be_switched_off() -> None:
+    cfg = Config()
+    assert cfg.auto_update is True and cfg.auto_update_tried == ""
+    values, _ = parse_settings("3", "180", "5")
+    assert values is not None
+    apply_settings(cfg, values, be_gentle=False, check_updates=True, auto_update=False)
+    assert cfg.auto_update is False
+    assert _clean({"auto_update": cfg.auto_update}).auto_update is False
+    assert _clean({"auto_update": "no"}).auto_update is True, "a wrong-typed value is ignored"
+    apply_settings(cfg, values, be_gentle=False, check_updates=True)  # callers that don't mention it leave it alone
+    assert cfg.auto_update is False
+
+
+def test_the_app_name_people_see_is_nyenz_agent() -> None:
+    from fanout import APP_NAME
+
+    assert APP_NAME == "Nyenz Agent"

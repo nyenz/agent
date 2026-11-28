@@ -89,12 +89,12 @@ def banner_script(number: int) -> str:
 def start_page_url(number: int) -> str:
     """A tiny built-in page telling the person what to do in a fresh window."""
     html = (
-        f"<title>FanOut account {number}</title>"
+        f"<title>Nyenz Agent account {number}</title>"
         "<body style='font-family:system-ui,sans-serif;margin:0;padding:72px 40px;background:#fafafa'>"
         f"<h1 style='color:{account_color(number)}'>Account {number}</h1>"
         "<p>Type your chat site's address in the address bar above, then log in as you normally do.</p>"
-        "<p>FanOut notices when the chat box is ready. You log in yourself; "
-        "FanOut never types or stores your login details.</p>"
+        "<p>Nyenz Agent notices when the chat box is ready. You log in yourself; "
+        "Nyenz Agent never types or stores your login details.</p>"
     )
     return "data:text/html;charset=utf-8," + quote(html)
 
@@ -198,7 +198,7 @@ def import_logins(src_profile: Path, dest_user_data_dir: Path) -> bool:
 
 def taskkill_args(pids: Sequence[int]) -> list[str]:
     """Windows command that politely asks exactly these processes to close (no /F, and never by name,
-    so FanOut's own browser windows are left alone)."""
+    so Nyenz Agent's own browser windows are left alone)."""
     args = ["taskkill"]
     for pid in pids:
         args += ["/PID", str(pid)]
@@ -379,7 +379,7 @@ class SessionManager:
 
     @staticmethod
     def _can_attach(spec: SlotSpec) -> bool:
-        """Only FanOut's own profile folders can be opened this way. Newer browsers ignore the control port on
+        """Only Nyenz Agent's own profile folders can be opened this way. Newer browsers ignore the control port on
         a real profile's default folder, so those keep the classic way."""
         return not spec.profile_directory and sessions_dir() in spec.user_data_dir.parents
 
@@ -410,7 +410,7 @@ class SessionManager:
                 self.emit(
                     "slot_note",
                     slot=spec.number,
-                    message=f"{friendly.message} FanOut opened it in standard mode instead. "
+                    message=f"{friendly.message} Nyenz Agent opened it in standard mode instead. "
                     "Some sites may ask you to prove you are human more than once.",
                 )
         elif attach and not spec.temporary:
@@ -432,7 +432,7 @@ class SessionManager:
     async def _launch_attached(self, spec: SlotSpec, exe: Path | None, rect: tuple[int, int, int, int]) -> Any:
         """Start the browser as a normal program, wait for its local control port, then attach to it.
 
-        You log in by hand in that normal window. FanOut attaches afterwards and does what it always does
+        You log in by hand in that normal window. Nyenz Agent attaches afterwards and does what it always does
         (banner, READY detection, sending, reading answers). Logins live in the profile folder as in any browser.
         """
         number = spec.number
@@ -502,7 +502,7 @@ class SessionManager:
             self.emit(
                 "slot_note",
                 slot=spec.number,
-                message="Couldn't open your real profile directly, so FanOut is using a private copy of its logins.",
+                message="Couldn't open your real profile directly, so Nyenz Agent is using a private copy of its logins.",
             )
             spec = spec.fallback
             context, rect = await self._launch(spec, index, count, exe, screen, saved, attach)
@@ -761,7 +761,7 @@ class SessionManager:
 
     @staticmethod
     def _users_brave_pids() -> list[int]:
-        """Main Brave processes that belong to the person, not to FanOut's own windows."""
+        """Main Brave processes that belong to the person, not to Nyenz Agent's own windows."""
         import psutil
 
         me = psutil.Process(os.getpid())

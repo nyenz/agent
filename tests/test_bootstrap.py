@@ -113,7 +113,7 @@ def test_a_broken_venv_is_noticed_and_rebuilt(fake_home: Path, capsys: pytest.Ca
     bootstrap.venv_python(fake_home).unlink()  # simulate a damaged install
     assert "broken" in bootstrap.needs_repair(fake_home)
     assert bootstrap.check(fake_home) == 0
-    assert "Fixing FanOut's setup" in capsys.readouterr().out
+    assert "Fixing Nyenz Agent's setup" in capsys.readouterr().out
     assert bootstrap.venv_works(fake_home) and bootstrap.needs_repair(fake_home) == ""
 
 

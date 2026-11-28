@@ -12,9 +12,9 @@ $app = "$env:LOCALAPPDATA\Programs\FanOut\FanOut.exe"
 $code = (Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru).ExitCode
 Check ($code -eq 0) "installer finished without questions (exit $code)"
 Check (Test-Path $app) "FanOut.exe installed for this user, no admin needed"
-Check (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\FanOut.lnk") "Start menu shortcut"
-Check (Test-Path (Join-Path ([Environment]::GetFolderPath("Desktop")) "FanOut.lnk")) "Desktop shortcut"
-Check ((Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{D2FA2C88-CEE7-4B59-8246-7428311F35C0}_is1").DisplayName -eq "FanOut") "listed in Apps & features"
+Check (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Nyenz Agent.lnk") "Start menu shortcut"
+Check (Test-Path (Join-Path ([Environment]::GetFolderPath("Desktop")) "Nyenz Agent.lnk")) "Desktop shortcut"
+Check ((Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{D2FA2C88-CEE7-4B59-8246-7428311F35C0}_is1").DisplayName -eq "Nyenz Agent") "listed in Apps & features"
 
 Check ((RunApp $app "--self-test") -eq 0) "installed app starts its built-in Chromium"
 Check ((Get-Content "$env:FANOUT_HOME\logs\fanout.log" -Raw) -match "Self-test passed") "self-test written to fanout.log"
@@ -29,6 +29,6 @@ Check (Test-Path "$env:FANOUT_HOME\marker.txt") "settings and results kept throu
 & "$env:LOCALAPPDATA\Programs\FanOut\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 for ($i = 0; $i -lt 60 -and (Test-Path $app); $i++) { Start-Sleep 1 }
 Check (-not (Test-Path $app)) "uninstall removes the program"
-Check (-not (Test-Path (Join-Path ([Environment]::GetFolderPath("Desktop")) "FanOut.lnk"))) "uninstall removes the Desktop shortcut"
+Check (-not (Test-Path (Join-Path ([Environment]::GetFolderPath("Desktop")) "Nyenz Agent.lnk"))) "uninstall removes the Desktop shortcut"
 Check (Test-Path "$env:FANOUT_HOME\marker.txt") "uninstall keeps the person's own data"
 Write-Host "ALL INSTALLER CHECKS PASSED"

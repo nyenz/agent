@@ -1,6 +1,6 @@
-"""FanOut installer and repair tool.
+"""Nyenz Agent installer and repair tool.
 
-Uses only the Python standard library, so it can run before FanOut's own environment exists.
+Uses only the Python standard library, so it can run before Nyenz Agent's own environment exists.
 
     python bootstrap.py install   build .venv, install pinned packages, add the browser, make a shortcut
     python bootstrap.py check     quick check on every launch; quietly repairs if something is missing
@@ -94,7 +94,7 @@ def save_state(state: dict[str, object], root: Path = ROOT) -> None:
 def desktop_entry(root: Path) -> str:
     """Text of a Linux .desktop launcher."""
     return (
-        "[Desktop Entry]\nType=Application\nName=FanOut\n"
+        "[Desktop Entry]\nType=Application\nName=Nyenz Agent\n"
         "Comment=Send different prompts to several chat sites at once\n"
         f'Exec="{root / "run.command"}"\nPath={root}\nIcon={root / "fanout" / "assets" / "icon.png"}\n'
         "Terminal=false\nCategories=Utility;\n"
@@ -107,16 +107,16 @@ def mac_launcher(root: Path) -> str:
 
 
 def windows_shortcut_script(root: Path) -> str:
-    """PowerShell that puts FanOut.lnk (pointing at run.bat) on the real Desktop folder."""
+    """PowerShell that puts Nyenz Agent.lnk (pointing at run.bat) on the real Desktop folder."""
     run_bat = str(root / "run.bat").replace("'", "''")
     work = str(root).replace("'", "''")
     return (
         "$desktop = [Environment]::GetFolderPath('Desktop'); "
         "$shell = New-Object -ComObject WScript.Shell; "
-        "$link = $shell.CreateShortcut((Join-Path $desktop 'FanOut.lnk')); "
+        "$link = $shell.CreateShortcut((Join-Path $desktop 'Nyenz Agent.lnk')); "
         f"$link.TargetPath = '{run_bat}'; $link.WorkingDirectory = '{work}'; "
-        "$link.WindowStyle = 7; $link.Description = 'FanOut'; $link.Save(); "
-        "Write-Output (Join-Path $desktop 'FanOut.lnk')"
+        "$link.WindowStyle = 7; $link.Description = 'Nyenz Agent'; $link.Save(); "
+        "Write-Output (Join-Path $desktop 'Nyenz Agent.lnk')"
     )
 
 
@@ -193,7 +193,7 @@ def chromium_path(py: Path) -> Path | None:
 
 
 def create_shortcut(root: Path = ROOT) -> Path | None:
-    """Put a FanOut launcher on the Desktop. Returns where it went, or None if that wasn't possible."""
+    """Put a Nyenz Agent launcher on the Desktop. Returns where it went, or None if that wasn't possible."""
     try:
         if sys.platform == "win32":
             done = subprocess.run(
@@ -204,14 +204,14 @@ def create_shortcut(root: Path = ROOT) -> Path | None:
             return Path(out) if done.returncode == 0 and out else None
         desktop = Path.home() / "Desktop"
         if sys.platform == "darwin":
-            target = desktop / "FanOut.command"
+            target = desktop / "Nyenz Agent.command"
             body = mac_launcher(root)
         else:
-            target = desktop / "FanOut.desktop"
+            target = desktop / "Nyenz Agent.desktop"
             body = desktop_entry(root)
             apps = Path.home() / ".local" / "share" / "applications"
             apps.mkdir(parents=True, exist_ok=True)
-            (apps / "FanOut.desktop").write_text(body, encoding="utf-8")
+            (apps / "Nyenz Agent.desktop").write_text(body, encoding="utf-8")
         if not desktop.is_dir():
             return None
         target.write_text(body, encoding="utf-8")
@@ -261,9 +261,9 @@ def install_all(
 
     step(1, f"Checking Python {sys.version_info.major}.{sys.version_info.minor}", quiet)
     if sys.version_info < MIN_PYTHON:
-        return False, f"FanOut needs Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]} or newer, this is {sys.version.split()[0]}."
+        return False, f"Nyenz Agent needs Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]} or newer, this is {sys.version.split()[0]}."
 
-    step(2, "Creating FanOut's private Python folder (.venv)", quiet)
+    step(2, "Creating Nyenz Agent's private Python folder (.venv)", quiet)
     if not make_venv(root, quiet):
         return False, "I couldn't create the .venv folder. Check there is free disk space and try again."
     py = venv_python(root)
@@ -271,10 +271,10 @@ def install_all(
     step(3, "Updating pip (a failure here is fine)", quiet)
     run([py, "-m", "pip", "install", "--disable-pip-version-check", "--retries", "1", "--timeout", "15", "--upgrade", "pip"], quiet=quiet)
 
-    step(4, "Installing FanOut's packages", quiet)
+    step(4, "Installing Nyenz Agent's packages", quiet)
     code = run([py, "-m", "pip", "install", "--disable-pip-version-check", "-r", req_path], quiet=quiet)
     if code != 0:
-        return False, "I couldn't install FanOut's packages. Check your internet connection, then run INSTALL again."
+        return False, "I couldn't install Nyenz Agent's packages. Check your internet connection, then run INSTALL again."
     still = package_problems(py, read_requirements(req_path))
     if still:
         return False, f"These packages still look wrong after installing: {', '.join(still)}."
@@ -283,7 +283,7 @@ def install_all(
     if check_tk and not tk_works(py):
         return False, "Tkinter is missing, so the window can't open. " + TK_HELP.get(sys.platform, TK_HELP["linux"])
 
-    step(6, "Adding FanOut's built-in Chromium browser (a few minutes the first time)", quiet)
+    step(6, "Adding Nyenz Agent's built-in Chromium browser (a few minutes the first time)", quiet)
     pins = dict(split_requirement(r) for r in read_requirements(req_path))
     fetch = browser and (force_browser or state.get("playwright") != pins.get("playwright") or not state.get("browser_installed"))
     if fetch:
@@ -308,7 +308,7 @@ def install_all(
     })
     save_state(state, root)
     extra = f" A shortcut is on your Desktop ({where.name})." if where else " (No Desktop shortcut was made; use run.bat / run.command.)"
-    return True, "FanOut is installed." + extra
+    return True, "Nyenz Agent is installed." + extra
 
 
 def needs_repair(root: Path = ROOT) -> str:
@@ -332,7 +332,7 @@ def check(root: Path = ROOT) -> int:
     reason = needs_repair(root)
     if not reason:
         return 0
-    say(f"Fixing FanOut's setup ({reason}). One moment...")
+    say(f"Fixing Nyenz Agent's setup ({reason}). One moment...")
     ok, message = install_all(root, browser=bool(load_state(root).get("browser_installed", True)),
                               shortcut=False, quiet=True, check_tk=False, force_browser=False)
     if not ok:
@@ -346,7 +346,7 @@ def check(root: Path = ROOT) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="bootstrap.py", description="FanOut installer and repair tool")
+    parser = argparse.ArgumentParser(prog="bootstrap.py", description="Nyenz Agent installer and repair tool")
     parser.add_argument("command", choices=["install", "check", "repair", "update"])
     parser.add_argument("--no-launch", action="store_true", help="don't start the app afterwards")
     parser.add_argument("--no-dialog", action="store_true", help="don't show the final message box")
@@ -368,9 +368,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     say(message)
     py = venv_python()
     if not args.no_dialog and py.exists():
-        show_dialog(py, "FanOut installer", message if ok else message + "\n\nDetails are in the black window.")
+        show_dialog(py, "Nyenz Agent installer", message if ok else message + "\n\nDetails are in the black window.")
     if ok and not args.no_launch and args.command == "install":
-        say("Starting FanOut...")
+        say("Starting Nyenz Agent...")
         return run([py, ROOT / "app.py"])
     return 0 if ok else 1
 

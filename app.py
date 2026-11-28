@@ -1,4 +1,4 @@
-"""FanOut entry point.
+"""Nyenz Agent entry point.
 
     python app.py                  open the app
     python app.py --list-profiles  print the Brave profiles found on this computer
@@ -44,7 +44,7 @@ def self_test() -> int:
         from playwright.async_api import async_playwright
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True, channel="chromium")  # the full browser FanOut uses, no extra shell
+            browser = await pw.chromium.launch(headless=True, channel="chromium")  # the full browser Nyenz Agent uses, no extra shell
             try:
                 page = await browser.new_page()
                 await page.set_content("<p id=ok>ok</p>")
@@ -73,7 +73,7 @@ def run_gui(smoke: bool) -> int:
     except ImportError:
         log.exception("Tkinter is not available")
         print(
-            "FanOut can't open its window because Tkinter (the window toolkit) is missing. "
+            "Nyenz Agent can't open its window because Tkinter (the window toolkit) is missing. "
             "Double-click INSTALL.bat (Windows) or install.command (Mac/Linux) to fix it."
         )
         return 1
@@ -82,7 +82,7 @@ def run_gui(smoke: bool) -> int:
     except tk.TclError:
         log.exception("Could not open a window")
         print(
-            "FanOut couldn't open a window. If you're on Linux, make sure a desktop session is running "
+            "Nyenz Agent couldn't open a window. If you're on Linux, make sure a desktop session is running "
             "and Tkinter is installed. Details are in fanout.log (see the README for where it is)."
         )
         return 1
@@ -103,8 +103,8 @@ def run_gui(smoke: bool) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments and dispatch."""
-    parser = argparse.ArgumentParser(prog="FanOut", description="Send different prompts to several chat sites at once.")
-    parser.add_argument("--version", action="version", version=f"FanOut {__version__}")
+    parser = argparse.ArgumentParser(prog="Nyenz Agent", description="Send different prompts to several chat sites at once.")
+    parser.add_argument("--version", action="version", version=f"Nyenz Agent {__version__}")
     parser.add_argument("--list-profiles", action="store_true", help="print Brave profiles and exit")
     parser.add_argument("--smoke-test", action="store_true", help="open the app, check the first screen, exit")
     parser.add_argument("--self-test", action="store_true", help="check the built-in Chromium starts, exit")

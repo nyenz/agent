@@ -341,3 +341,129 @@ def test_a_failed_run_makes_send_usable_again(root: tk.Tk, monkeypatch: pytest.M
     assert not view.running
     assert "disabled" not in view.send_button.state()
     assert "try again" in view.summary.get().lower()
+
+
+# ----- updates that install by themselves ------------------------------------------------------
+
+
+def _release(tag: str = "v9.9.9") -> Any:
+    from fanout.updater import ReleaseInfo
+
+    site = "https://x.example"
+    return ReleaseInfo(tag, (9, 9, 9), "", site, f"{site}/z", f"{site}/s", f"{site}/setup", f"{site}/setup.sha")
+
+
+class _Updates:
+    """Stands in for the network and the installer. Records what the app asked for."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fail: bool = False) -> None:
+        import fanout.ui as ui_module
+        from fanout import updater
+        from fanout.updater import UpdateError
+
+        self.downloads = 0
+        self.started: list[Path] = []
+        self.asked: list[str] = []
+        self.errors: list[str] = []
+        setup = tmp_path / "Setup.exe"
+        setup.write_bytes(b"MZ")
+
+        def download(info: Any, progress: Any = None) -> Path:
+            self.downloads += 1
+            if fail:
+                raise UpdateError("I couldn't download the update.")
+            return setup
+
+        monkeypatch.setattr(updater, "is_frozen", lambda: True)
+        monkeypatch.setattr(updater, "can_self_install", lambda info: True)
+        monkeypatch.setattr(updater, "download_installer", download)
+        monkeypatch.setattr(updater, "start_installer", lambda path: self.started.append(path))
+        monkeypatch.setattr(ui_module.messagebox, "askyesno", lambda *a, **k: self.asked.append("yes?") or True)
+        monkeypatch.setattr(ui_module.messagebox, "showerror", lambda *a, **k: self.errors.append(str(a)))
+        monkeypatch.setattr(ui_module.messagebox, "showinfo", lambda *a, **k: self.asked.append("info"))
+
+
+def _wait(root: tk.Tk, done: Any, seconds: float = 5.0) -> bool:
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        root.update()
+        if done():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def _app_for_updates(root: tk.Tk, saved: list[Config], **cfg_values: Any) -> FanOutApp:
+    app = open_app(root, Config(first_run_notice_dismissed=True, **cfg_values), fake_scan(2), saved)
+    app.close = lambda: None  # type: ignore[method-assign]  # the real one would destroy the shared window
+    return app
+
+
+def test_a_new_version_installs_by_itself_without_asking(root: tk.Tk, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake = _Updates(monkeypatch, tmp_path)
+    saved: list[Config] = []
+    app = _app_for_updates(root, saved)
+    app.on_update_event("update_checked", (_release(), False))
+    assert _wait(root, lambda: bool(fake.started)), "the installer was never started"
+    assert fake.asked == [], "an automatic update must not ask anything"
+    assert fake.errors == []
+    assert app.cfg.auto_update_tried == "9.9.9" and saved, "the tried version is written down before the app closes"
+
+
+def test_the_same_version_is_not_tried_twice_on_its_own(root: tk.Tk, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake = _Updates(monkeypatch, tmp_path)
+    app = _app_for_updates(root, [], auto_update_tried="9.9.9")
+    app.on_update_event("update_checked", (_release(), False))
+    root.update()
+    time.sleep(0.2)
+    root.update()
+    assert fake.downloads == 0 and app.update_bar is not None, "the green bar is still there for the person to use"
+
+
+def test_nothing_happens_by_itself_when_auto_update_is_off(root: tk.Tk, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake = _Updates(monkeypatch, tmp_path)
+    app = _app_for_updates(root, [], auto_update=False)
+    app.on_update_event("update_checked", (_release(), False))
+    time.sleep(0.2)
+    root.update()
+    assert fake.downloads == 0 and fake.started == [] and app.update_bar is not None
+
+
+def test_a_button_press_still_asks_first(root: tk.Tk, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake = _Updates(monkeypatch, tmp_path)
+    monkeypatch.setattr("fanout.ui.messagebox.askyesno", lambda *a, **k: fake.asked.append("yes?") or False)
+    app = _app_for_updates(root, [], auto_update=False)
+    app.show_update_banner(_release())
+    app.update_now()
+    assert fake.asked == ["yes?"] and fake.downloads == 0
+
+
+def test_a_run_in_progress_is_never_interrupted(root: tk.Tk, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake = _Updates(monkeypatch, tmp_path)
+    app = _app_for_updates(root, [])
+    app.worker = object()  # type: ignore[assignment]  # "browser windows are open"
+    try:
+        app.on_update_event("update_checked", (_release(), False))
+        time.sleep(0.2)
+        root.update()
+        assert fake.downloads == 0, "no automatic update while windows are open"
+        # A run that started while the file was downloading: keep the file, do not close anything.
+        setup = tmp_path / "Setup.exe"
+        app.on_update_event("update_install", setup)
+        assert fake.started == [] and app.ready_installer == setup
+        assert "press Update now" in app.update_text.get()
+    finally:
+        app.worker = None
+
+
+def test_a_failed_automatic_update_says_so_in_the_bar_and_tries_again_next_time(
+    root: tk.Tk, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = _Updates(monkeypatch, tmp_path, fail=True)
+    app = _app_for_updates(root, [])
+    app.on_update_event("update_checked", (_release(), False))
+    assert _wait(root, lambda: app.update_bar is not None and "didn't work" in app.update_text.get())
+    assert fake.errors == [], "no pop-up out of nowhere"
+    assert "Press Update now" in app.update_text.get()
+    assert app.cfg.auto_update_tried == "", "a download that failed is retried on the next start"
+    assert app.update_automatic is False and app.working_on_update is False
